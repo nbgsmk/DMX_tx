@@ -49,10 +49,10 @@ const osThreadAttr_t defaultTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for myTask02 */
-osThreadId_t myTask02Handle;
-const osThreadAttr_t myTask02_attributes = {
-  .name = "myTask02",
+/* Definitions for taskHeartbeat */
+osThreadId_t taskHeartbeatHandle;
+const osThreadAttr_t taskHeartbeat_attributes = {
+  .name = "taskHeartbeat",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
@@ -121,10 +121,10 @@ const osEventFlagsAttr_t myEvent01_attributes = {
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 void StartDefaultTask(void *argument);
-void StartTask02(void *argument);
+void taskHeartbeatStart(void *argument);
 void StartTask03(void *argument);
-void Callback01(void *argument);
-void Callback02(void *argument);
+void Timer01Callback(void *argument);
+void Timer02Callback(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -197,10 +197,10 @@ int main(void)
 
   /* Create the timer(s) */
   /* creation of myTimer01 */
-  myTimer01Handle = osTimerNew(Callback01, osTimerPeriodic, NULL, &myTimer01_attributes);
+  myTimer01Handle = osTimerNew(Timer01Callback, osTimerPeriodic, NULL, &myTimer01_attributes);
 
   /* creation of myTimer02 */
-  myTimer02Handle = osTimerNew(Callback02, osTimerPeriodic, NULL, &myTimer02_attributes);
+  myTimer02Handle = osTimerNew(Timer02Callback, osTimerPeriodic, NULL, &myTimer02_attributes);
 
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
@@ -221,8 +221,8 @@ int main(void)
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
-  /* creation of myTask02 */
-  myTask02Handle = osThreadNew(StartTask02, NULL, &myTask02_attributes);
+  /* creation of taskHeartbeat */
+  taskHeartbeatHandle = osThreadNew(taskHeartbeatStart, NULL, &taskHeartbeat_attributes);
 
   /* creation of myTask03 */
   myTask03Handle = osThreadNew(StartTask03, NULL, &myTask03_attributes);
@@ -311,8 +311,8 @@ void SystemClock_Config(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -320,17 +320,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : BOARD_LED_Pin */
-  GPIO_InitStruct.Pin = BOARD_LED_Pin;
+  /*Configure GPIO pin : BOARD_LED0_Pin */
+  GPIO_InitStruct.Pin = BOARD_LED0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(BOARD_LED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(BOARD_LED0_GPIO_Port, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -357,22 +357,25 @@ void StartDefaultTask(void *argument)
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_StartTask02 */
+/* USER CODE BEGIN Header_taskHeartbeatStart */
 /**
-* @brief Function implementing the myTask02 thread.
+* @brief Function implementing the taskHeartbeat thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask02 */
-void StartTask02(void *argument)
+/* USER CODE END Header_taskHeartbeatStart */
+void taskHeartbeatStart(void *argument)
 {
-  /* USER CODE BEGIN StartTask02 */
+  /* USER CODE BEGIN taskHeartbeatStart */
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	    HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_RESET);
+	    osDelay(10);
+	    HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_SET);
+	    osDelay(1990);
   }
-  /* USER CODE END StartTask02 */
+  /* USER CODE END taskHeartbeatStart */
 }
 
 /* USER CODE BEGIN Header_StartTask03 */
@@ -393,20 +396,20 @@ void StartTask03(void *argument)
   /* USER CODE END StartTask03 */
 }
 
-/* Callback01 function */
-void Callback01(void *argument)
+/* Timer01Callback function */
+void Timer01Callback(void *argument)
 {
-  /* USER CODE BEGIN Callback01 */
+  /* USER CODE BEGIN Timer01Callback */
 
-  /* USER CODE END Callback01 */
+  /* USER CODE END Timer01Callback */
 }
 
-/* Callback02 function */
-void Callback02(void *argument)
+/* Timer02Callback function */
+void Timer02Callback(void *argument)
 {
-  /* USER CODE BEGIN Callback02 */
+  /* USER CODE BEGIN Timer02Callback */
 
-  /* USER CODE END Callback02 */
+  /* USER CODE END Timer02Callback */
 }
 
 /**
@@ -422,7 +425,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM11) {
+  if (htim->Instance == TIM11)
+  {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
@@ -444,8 +448,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
