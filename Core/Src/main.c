@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usbd_cdc_if.h"
+//#include "DMX512.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,6 +43,11 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
+
+SPI_HandleTypeDef hspi1;
+DMA_HandleTypeDef hdma_spi1_tx;
+
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
@@ -56,10 +62,31 @@ const osThreadAttr_t taskHeartbeat_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for myTask03 */
-osThreadId_t myTask03Handle;
-const osThreadAttr_t myTask03_attributes = {
-  .name = "myTask03",
+/* Definitions for taskCdcTx */
+osThreadId_t taskCdcTxHandle;
+const osThreadAttr_t taskCdcTx_attributes = {
+  .name = "taskCdcTx",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for taskCdcRx */
+osThreadId_t taskCdcRxHandle;
+const osThreadAttr_t taskCdcRx_attributes = {
+  .name = "taskCdcRx",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for task05 */
+osThreadId_t task05Handle;
+const osThreadAttr_t task05_attributes = {
+  .name = "task05",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for task06 */
+osThreadId_t task06Handle;
+const osThreadAttr_t task06_attributes = {
+  .name = "task06",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
@@ -114,15 +141,23 @@ const osEventFlagsAttr_t myEvent01_attributes = {
   .name = "myEvent01"
 };
 /* USER CODE BEGIN PV */
+uint8_t dmxTxPayload[512];
+uint8_t dmxTxPacket[513];
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_RTC_Init(void);
+static void MX_SPI1_Init(void);
 void StartDefaultTask(void *argument);
 void taskHeartbeatStart(void *argument);
-void StartTask03(void *argument);
+void taskCdcTxStart(void *argument);
+void taskCdcRxStart(void *argument);
+void task05Start(void *argument);
+void task06Start(void *argument);
 void Timer01Callback(void *argument);
 void Timer02Callback(void *argument);
 
@@ -132,6 +167,39 @@ void Timer02Callback(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void initDmxTxPacket(){
+	// zero everything
+    for (int i = 0; i < sizeof(dmxTxPacket); ++i) {
+    	dmxTxPacket[i] = 0x00;
+    }
+
+    // construct start sequence
+    uint32_t t = 0;				// absolute position
+	uint32_t i = 0;				// relative bit counter
+    for (i = 0;	i < 24; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// >22 bit: packet start sequence
+    for (i = 0;	i <  4; ++i)	{ dmxTxPacket[i] = 0xff;   }; t = t+i;	// >2 bit: packet start sequence
+    for (i = 0;	i <  1; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// 1 start bit is logic zero
+    for (i = 0;	i <  8; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// 8 bit: frame 0 is always zero for lighting applications. Otherwise the dmx lig fixture will reject it.
+    for (i = 0;	i <  2; ++i)	{ dmxTxPacket[i] = 0xff;   }; t = t+i;	// 2 bit: stop bits are logic 1
+
+    // the rest of bytes remain for user payload
+}
+
+void initDmxTxPayload(){
+	// zero everything
+    for (int i = 0; i < sizeof(dmxTxPayload); ++i) {
+    	dmxTxPayload[i] = 0x00;
+    }
+}
+
+void setDmxData(uint16_t dmxAddr, uint8_t dmxData){
+	dmxTxPayload[dmxAddr] = dmxData;
+}
+
+void sendDmxFrame(){
+
+
+}
 
 /* USER CODE END 0 */
 
@@ -164,6 +232,9 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_RTC_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -224,8 +295,17 @@ int main(void)
   /* creation of taskHeartbeat */
   taskHeartbeatHandle = osThreadNew(taskHeartbeatStart, NULL, &taskHeartbeat_attributes);
 
-  /* creation of myTask03 */
-  myTask03Handle = osThreadNew(StartTask03, NULL, &myTask03_attributes);
+  /* creation of taskCdcTx */
+  taskCdcTxHandle = osThreadNew(taskCdcTxStart, NULL, &taskCdcTx_attributes);
+
+  /* creation of taskCdcRx */
+  taskCdcRxHandle = osThreadNew(taskCdcRxStart, NULL, &taskCdcRx_attributes);
+
+  /* creation of task05 */
+  task05Handle = osThreadNew(task05Start, NULL, &task05_attributes);
+
+  /* creation of task06 */
+  task06Handle = osThreadNew(task06Start, NULL, &task06_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -271,13 +351,14 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 25;
   RCC_OscInitStruct.PLL.PLLN = 192;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV6;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -290,10 +371,10 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -301,6 +382,95 @@ void SystemClock_Config(void)
   /** Enables the Clock Security System
   */
   HAL_RCC_EnableCSS();
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+
 }
 
 /**
@@ -320,14 +490,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : BOARD_LED0_Pin */
-  GPIO_InitStruct.Pin = BOARD_LED0_Pin;
+  /*Configure GPIO pin : BOARD_LED_0_Pin */
+  GPIO_InitStruct.Pin = BOARD_LED_0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(BOARD_LED0_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(BOARD_LED_0_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : BOARD_KEY_0_Pin */
+  GPIO_InitStruct.Pin = BOARD_KEY_0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(BOARD_KEY_0_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   /* USER CODE END MX_GPIO_Init_2 */
@@ -367,33 +543,99 @@ void StartDefaultTask(void *argument)
 void taskHeartbeatStart(void *argument)
 {
   /* USER CODE BEGIN taskHeartbeatStart */
+
   /* Infinite loop */
   for(;;)
   {
-	    HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_RESET);
-	    osDelay(10);
-	    HAL_GPIO_WritePin(BOARD_LED0_GPIO_Port, BOARD_LED0_Pin, GPIO_PIN_SET);
-	    osDelay(1990);
+	    HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_RESET);
+	    osDelay(1);
+	    HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
+	    osDelay(1999);
   }
   /* USER CODE END taskHeartbeatStart */
 }
 
-/* USER CODE BEGIN Header_StartTask03 */
+/* USER CODE BEGIN Header_taskCdcTxStart */
 /**
-* @brief Function implementing the myTask03 thread.
+* @brief Function implementing the taskCdcTx thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask03 */
-void StartTask03(void *argument)
+/* USER CODE END Header_taskCdcTxStart */
+void taskCdcTxStart(void *argument)
 {
-  /* USER CODE BEGIN StartTask03 */
+  /* USER CODE BEGIN taskCdcTxStart */
+	char message[] = "C\n";
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+    CDC_Transmit_FS((uint8_t*)message, strlen(message));
+
+    setChannel(1, 0b10011001);
+    setChannel(7, 0b10011001);
+    setChannel(8, 0b10011001);
+    setChannel(24, 11);
+    osDelay(4000);
+
+  }
+  /* USER CODE END taskCdcTxStart */
+}
+
+/* USER CODE BEGIN Header_taskCdcRxStart */
+/**
+* @brief Function implementing the taskCdcRx thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_taskCdcRxStart */
+void taskCdcRxStart(void *argument)
+{
+  /* USER CODE BEGIN taskCdcRxStart */
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
   }
-  /* USER CODE END StartTask03 */
+  /* USER CODE END taskCdcRxStart */
+}
+
+/* USER CODE BEGIN Header_task05Start */
+/**
+* @brief Function implementing the task05 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_task05Start */
+void task05Start(void *argument)
+{
+  /* USER CODE BEGIN task05Start */
+
+	/* Infinite loop */
+  for(;;)
+  {
+	  osDelay(5);
+
+  }
+  /* USER CODE END task05Start */
+}
+
+/* USER CODE BEGIN Header_task06Start */
+/**
+* @brief Function implementing the task06 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_task06Start */
+void task06Start(void *argument)
+{
+  /* USER CODE BEGIN task06Start */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END task06Start */
 }
 
 /* Timer01Callback function */
