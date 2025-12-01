@@ -123,6 +123,11 @@ osMutexId_t myMutex02Handle;
 const osMutexAttr_t myMutex02_attributes = {
   .name = "myMutex02"
 };
+/* Definitions for dmxLLandChannelMutex */
+osMutexId_t dmxLLandChannelMutexHandle;
+const osMutexAttr_t dmxLLandChannelMutex_attributes = {
+  .name = "dmxLLandChannelMutex"
+};
 /* Definitions for myBinarySem01 */
 osSemaphoreId_t myBinarySem01Handle;
 const osSemaphoreAttr_t myBinarySem01_attributes = {
@@ -250,6 +255,9 @@ int main(void)
 
   /* creation of myMutex02 */
   myMutex02Handle = osMutexNew(&myMutex02_attributes);
+
+  /* creation of dmxLLandChannelMutex */
+  dmxLLandChannelMutexHandle = osMutexNew(&dmxLLandChannelMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -577,6 +585,11 @@ void taskHeartbeatStart(void *argument)
 		} else {
 			boardLedBlink(2);									// trepni jako ako je dosla notifikacija
 		}
+
+//		osSemaphoreWait(dmxAllChannelsMutexHandle, cekaj);
+//		osSemaphoreAcquire(dmxAllChannelsMutexHandle, notif);
+//		(dmxLLPktMutexHandle, portMAX_DELAY);
+
 
 	}
   /* USER CODE END taskHeartbeatStart */

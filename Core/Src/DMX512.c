@@ -7,7 +7,11 @@
 
 #include "main.h"
 #include <string.h>
+#include "cmsis_os.h"
 #include "DMX512.h"
+
+extern osMutexId_t dmxLLandChannelMutexHandle;
+
 
 void setChannel(uint16_t dmxAddress, uint8_t value){
 
@@ -28,16 +32,20 @@ void setChannel(uint16_t dmxAddress, uint8_t value){
 //		dmxPkt.combined[ofs + i] = dmxChan.stop[i];		// copy payload
 //	}
 
-	////////////////////////////////
+	//------------------------
 	// directly save user data
 	// there is nothing more to it!
-	///////////////////////////////
+	//------------------------
+
+	//+++++++++++++++++++++++
+	// CRITICAL SECTION MUTEX
+	osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
 	dmxAllChannels[dmxAddress-1] = value;
 
-	////////////////////////
+	//------------------------
 	// low-level preparation
 	// construct low-level data in memory for SPI transmission
-	////////////////////////
+	//------------------------
 	for (uint8_t i = 0; i < sizeof(dmxLLFrame.payload); ++i) {
 		if (value & (1 << i)) {
 			dmxLLFrame.payload[i] = 0xFF;  // bit is 1
@@ -54,6 +62,10 @@ void setChannel(uint16_t dmxAddress, uint8_t value){
 
 	ofs += sizeof(dmxLLFrame.payload);										// move offset behind 'payload'
 	memcpy(dmxLLPkt.combined + ofs, &dmxLLFrame.stop, sizeof(dmxLLFrame.stop));
+
+	osMutexRelease(dmxLLandChannelMutexHandle);
+	// CRITICAL SECTION MUTEX END
+	//+++++++++++++++++++++++++++
 
 	__NOP();	// only for breakpoints
 };
