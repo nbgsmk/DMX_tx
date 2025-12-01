@@ -23,8 +23,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stdbool.h"
 #include "usbd_cdc_if.h"
-//#include "DMX512.h"
+#include "DMX512.h"
+
+#include "BoardSUP.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -511,6 +514,15 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+
+void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	vTaskNotifyGiveFromISR(taskHeartbeatHandle, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+//	CDC_Transmit_FS(Buf, Len);
+
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -543,16 +555,30 @@ void StartDefaultTask(void *argument)
 void taskHeartbeatStart(void *argument)
 {
   /* USER CODE BEGIN taskHeartbeatStart */
-	char message[] = "DMX!\n";
+	char message[] = "DMX č!\n";
+	boardLedBlinkCount(2, 50, 50);								// blink at power on
+	uint32_t cekaj = 0;
   /* Infinite loop */
-  for(;;)
-  {
-//	   CDC_Transmit_FS((uint8_t*)message, strlen(message));
-	  HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_RESET);
-	  osDelay(1);
-	  HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
-	  osDelay(1999);
-  }
+	osDelay(1);
+	for (;;) {
+		osDelay(1);
+
+		cekaj = 5000;
+		if ( boardKeyPressed() == true ) {
+			cekaj = 500;
+		}
+
+		int notif = ulTaskNotifyTake(pdTRUE, cekaj);			// cekaj task notifikaciju 5 sekundi
+		if (0 == notif) {
+			boardLedBlinkCount(5, 1, 29);						// heartbeat 5 * (1:29 duty cycle) = 150mS smanjenim intenzitetom
+			if ( boardKeyPressed() == true ) {
+				CDC_Transmit_FS((uint8_t*) message, strlen(message));
+			}
+		} else {
+			boardLedBlink(2);									// trepni jako ako je dosla notifikacija
+		}
+
+	}
   /* USER CODE END taskHeartbeatStart */
 }
 

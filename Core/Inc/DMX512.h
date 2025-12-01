@@ -9,8 +9,6 @@
 #ifndef INC_DMX512_H_
 #define INC_DMX512_H_
 
-#include <stdint.h>
-
 #define LO 0x00
 #define LO5 LO, LO, LO, LO, LO
 #define LO10 LO5, LO5
@@ -34,7 +32,7 @@ typedef uint8_t DmxChannel_t;							// 8-bit dmx channel values 0..255
 typedef uint8_t DmxAllChannels_t[dmxChannelCount];		// array of 512 user data, hence dmx512
 
 // variables
-DmxChannel_t dmxChan;						// single dmx channel
+//static DmxChannel_t dmxChan;						// single dmx channel
 static DmxAllChannels_t dmxAllChannels;		// array for all channels
 
 
