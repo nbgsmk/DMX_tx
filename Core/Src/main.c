@@ -543,14 +543,15 @@ void StartDefaultTask(void *argument)
 void taskHeartbeatStart(void *argument)
 {
   /* USER CODE BEGIN taskHeartbeatStart */
-
+	char message[] = "DMX!\n";
   /* Infinite loop */
   for(;;)
   {
-	    HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_RESET);
-	    osDelay(1);
-	    HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
-	    osDelay(1999);
+//	   CDC_Transmit_FS((uint8_t*)message, strlen(message));
+	  HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_RESET);
+	  osDelay(1);
+	  HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
+	  osDelay(1999);
   }
   /* USER CODE END taskHeartbeatStart */
 }
@@ -565,18 +566,20 @@ void taskHeartbeatStart(void *argument)
 void taskCdcTxStart(void *argument)
 {
   /* USER CODE BEGIN taskCdcTxStart */
-	char message[] = "C\n";
+	uint8_t *userData_ptr = getAllChannels();
+
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
-    CDC_Transmit_FS((uint8_t*)message, strlen(message));
-
-    setChannel(1, 0b10011001);
-    setChannel(7, 0b10011001);
-    setChannel(8, 0b10011001);
-    setChannel(24, 11);
-    osDelay(4000);
+    CDC_Transmit_FS((uint8_t*)userData_ptr, 16);
+//    for (int i = 0; i < 16; ++i) {
+//    	channel_value = userData_ptr[i];
+//    	txBuf_u16[2*i] = 0;
+//    	txBuf_u16[2*(i+1)] = channel_value;
+//	}
+//    CDC_Transmit_FS(txBuf_u16, sizeof(txBuf_u16));
+    osDelay(1500);
 
   }
   /* USER CODE END taskCdcTxStart */
@@ -592,10 +595,20 @@ void taskCdcTxStart(void *argument)
 void taskCdcRxStart(void *argument)
 {
   /* USER CODE BEGIN taskCdcRxStart */
+	uint32_t del = 15000;
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+		osDelay(1);
+		setChannel(1, 0b10011001);
+		osDelay(del);
+		setChannel(7, 0b10011001);
+		osDelay(del);
+		setChannel(8, 0b10011001);
+		osDelay(del);
+		setChannel(4, 0b01101100);
+
+
   }
   /* USER CODE END taskCdcRxStart */
 }

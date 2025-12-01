@@ -9,15 +9,7 @@
 #include <string.h>
 #include "DMX512.h"
 
-void setChannel(uint16_t dmxAddr, uint8_t value){
-
-	for (uint8_t i = 0; i < sizeof(dmxChan.payload); ++i) {
-		if (value & (1 << i)) {
-			dmxChan.payload[i] = 0xFF;  // bit is 1
-		} else {
-			dmxChan.payload[i] = 0x00;  // bit is 0
-		}
-	}
+void setChannel(uint16_t dmxAddress, uint8_t value){
 
 //	uint16_t ofs;
 //	ofs = dmxHederOffset + ((dmxAddr-1) * sizeof(DmxChan_t));			// absolute offset into dmx packet 'start bit'
@@ -36,15 +28,49 @@ void setChannel(uint16_t dmxAddr, uint8_t value){
 //		dmxPkt.combined[ofs + i] = dmxChan.stop[i];		// copy payload
 //	}
 
+	////////////////////////////////
+	// directly save user data
+	// there is nothing more to it!
+	///////////////////////////////
+	dmxAllChannels[dmxAddress-1] = value;
 
-	uint16_t ofs = dmxHederOffset + ((dmxAddr-1) * sizeof(DmxChan_t));			// absolute offset into dmx packet 'start bit'
-	memcpy(dmxPkt.combined + ofs, &dmxChan.start, sizeof(dmxChan.start));
+	////////////////////////
+	// low-level preparation
+	// construct low-level data in memory for SPI transmission
+	////////////////////////
+	for (uint8_t i = 0; i < sizeof(dmxLLFrame.payload); ++i) {
+		if (value & (1 << i)) {
+			dmxLLFrame.payload[i] = 0xFF;  // bit is 1
+		} else {
+			dmxLLFrame.payload[i] = 0x00;  // bit is 0
+		}
+	}
 
-	ofs += sizeof(dmxChan.start);										// move offset behind 'start bit'
-	memcpy(dmxPkt.combined + ofs, &dmxChan.payload, sizeof(dmxChan.payload));
+	uint16_t ofs = dmxHeaderOffset + ((dmxAddress-1) * sizeof(DmxLLFrame_t));			// absolute offset into dmx packet 'start bit'
+	memcpy(dmxLLPkt.combined + ofs, &dmxLLFrame.start, sizeof(dmxLLFrame.start));
 
-	ofs += sizeof(dmxChan.payload);										// move offset behind 'payload'
-	memcpy(dmxPkt.combined + ofs, &dmxChan.stop, sizeof(dmxChan.stop));
+	ofs += sizeof(dmxLLFrame.start);										// move offset behind 'start bit'
+	memcpy(dmxLLPkt.combined + ofs, &dmxLLFrame.payload, sizeof(dmxLLFrame.payload));
 
-	ofs++;
+	ofs += sizeof(dmxLLFrame.payload);										// move offset behind 'payload'
+	memcpy(dmxLLPkt.combined + ofs, &dmxLLFrame.stop, sizeof(dmxLLFrame.stop));
+
+	__NOP();	// only for breakpoints
 };
+
+
+DmxChannel_t getChannel(uint16_t dmxAddress){
+	return dmxAllChannels[dmxAddress];
+}
+
+
+DmxAllChannels_t* getAllChannels(void){
+	return &dmxAllChannels;
+}
+
+
+char* hexToStr(uint8_t hexVal){
+	char s[4];
+	sprintf(s, 5, "%4X", hexVal);
+	return &s;
+}
