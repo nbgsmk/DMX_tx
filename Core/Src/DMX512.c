@@ -80,6 +80,13 @@ DmxAllChannels_t* getAllChannels(void){
 	return &dmxAllChannels;
 }
 
+void clearAllChannels(){
+	for (int i = 0; i < dmxChannelCount; ++i) {
+		setChannel(i, 0);
+		setChannel(i, (uint8_t)'_');
+	}
+}
+
 
 char* hexToStr(uint8_t hexVal){
 	char s[4];

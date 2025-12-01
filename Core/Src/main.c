@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include "stdbool.h"
 #include "usbd_cdc_if.h"
+#include "usbd_cdc.h"
 #include "DMX512.h"
 
 #include "BoardSUP.h"
@@ -149,8 +150,6 @@ const osEventFlagsAttr_t myEvent01_attributes = {
   .name = "myEvent01"
 };
 /* USER CODE BEGIN PV */
-uint8_t dmxTxPayload[512];
-uint8_t dmxTxPacket[513];
 
 /* USER CODE END PV */
 
@@ -175,39 +174,6 @@ void Timer02Callback(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void initDmxTxPacket(){
-	// zero everything
-    for (int i = 0; i < sizeof(dmxTxPacket); ++i) {
-    	dmxTxPacket[i] = 0x00;
-    }
-
-    // construct start sequence
-    uint32_t t = 0;				// absolute position
-	uint32_t i = 0;				// relative bit counter
-    for (i = 0;	i < 24; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// >22 bit: packet start sequence
-    for (i = 0;	i <  4; ++i)	{ dmxTxPacket[i] = 0xff;   }; t = t+i;	// >2 bit: packet start sequence
-    for (i = 0;	i <  1; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// 1 start bit is logic zero
-    for (i = 0;	i <  8; ++i)	{ dmxTxPacket[i] = 0x00;   }; t = t+i;	// 8 bit: frame 0 is always zero for lighting applications. Otherwise the dmx lig fixture will reject it.
-    for (i = 0;	i <  2; ++i)	{ dmxTxPacket[i] = 0xff;   }; t = t+i;	// 2 bit: stop bits are logic 1
-
-    // the rest of bytes remain for user payload
-}
-
-void initDmxTxPayload(){
-	// zero everything
-    for (int i = 0; i < sizeof(dmxTxPayload); ++i) {
-    	dmxTxPayload[i] = 0x00;
-    }
-}
-
-void setDmxData(uint16_t dmxAddr, uint8_t dmxData){
-	dmxTxPayload[dmxAddr] = dmxData;
-}
-
-void sendDmxFrame(){
-
-
-}
 
 /* USER CODE END 0 */
 
@@ -524,10 +490,14 @@ static void MX_GPIO_Init(void)
 
 
 void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
+
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// obavesti led diodu da je nesto doslo preko usb-a
 	vTaskNotifyGiveFromISR(taskHeartbeatHandle, &xHigherPriorityTaskWoken);
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-//	CDC_Transmit_FS(Buf, Len);
+
+	// ako hoces usb_cdc local echo
+	//	CDC_Transmit_FS(Buf, Len);
 
 }
 
@@ -576,20 +546,23 @@ void taskHeartbeatStart(void *argument)
 			cekaj = 500;
 		}
 
-		int notif = ulTaskNotifyTake(pdTRUE, cekaj);			// cekaj task notifikaciju 5 sekundi
+		// cekaj task notifikaciju 5 sekundi ili krace
+		int notif = ulTaskNotifyTake(pdTRUE, cekaj);
+
 		if (0 == notif) {
-			boardLedBlinkCount(5, 1, 29);						// heartbeat 5 * (1:29 duty cycle) = 150mS smanjenim intenzitetom
+			// isteklo vreme bez notifikacije
+			// prikazi heartbeat: 5*(1:29 duty cycle) = 150mS smanjenim intenzitetom
+			boardLedBlinkCount(5, 1, 29);
+
 			if ( boardKeyPressed() == true ) {
+				// ako je pritisnuto dugme, dodaj i neki string na printout
 				CDC_Transmit_FS((uint8_t*) message, strlen(message));
 			}
+
 		} else {
-			boardLedBlink(2);									// trepni jako ako je dosla notifikacija
+			// trepni jako ako je dosla notifikacija
+			boardLedBlink(2);
 		}
-
-//		osSemaphoreWait(dmxAllChannelsMutexHandle, cekaj);
-//		osSemaphoreAcquire(dmxAllChannelsMutexHandle, notif);
-//		(dmxLLPktMutexHandle, portMAX_DELAY);
-
 
 	}
   /* USER CODE END taskHeartbeatStart */
@@ -608,19 +581,18 @@ void taskCdcTxStart(void *argument)
 	uint8_t *userData_ptr = getAllChannels();
 
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-    CDC_Transmit_FS((uint8_t*)userData_ptr, 16);
-//    for (int i = 0; i < 16; ++i) {
-//    	channel_value = userData_ptr[i];
-//    	txBuf_u16[2*i] = 0;
-//    	txBuf_u16[2*(i+1)] = channel_value;
-//	}
-//    CDC_Transmit_FS(txBuf_u16, sizeof(txBuf_u16));
-    osDelay(1500);
+	for (;;) {
+		osDelay(1);
 
-  }
+		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 16) == USBD_BUSY ) {
+			// po potrebi signaliziraj nekom neku gresku
+			// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
+			// CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
+		}
+
+		osDelay(1500);
+
+	}
   /* USER CODE END taskCdcTxStart */
 }
 
@@ -634,18 +606,24 @@ void taskCdcTxStart(void *argument)
 void taskCdcRxStart(void *argument)
 {
   /* USER CODE BEGIN taskCdcRxStart */
-	uint32_t del = 15000;
+	uint32_t dly = 10000;
   /* Infinite loop */
   for(;;)
   {
 		osDelay(1);
-		setChannel(1, 0b10011001);
-		osDelay(del);
-		setChannel(7, 0b10011001);
-		osDelay(del);
-		setChannel(8, 0b10011001);
-		osDelay(del);
-		setChannel(4, 0b01101100);
+		setChannel(1, (uint8_t)'a');
+		osDelay(dly);
+		setChannel(7, (uint8_t)'a');
+		osDelay(dly);
+		setChannel(8,  (uint8_t)'t');
+		setChannel(9,  (uint8_t)'k');
+		osDelay(dly);
+		setChannel(6,  (uint8_t)'p');
+		osDelay(dly);
+		setChannel(10,  (uint8_t)'a');
+		osDelay(dly);
+		osDelay(dly);
+		clearAllChannels();
 
 
   }
