@@ -3,6 +3,8 @@ Led.c.h rename to boardSUP
 poboljsani heartbeat
 
 freertos:
+	QUEUE_REGISTRY_SIZE = 64
+	ENABLE_FPU
 	ENABLE_BACKWARD_COMPATIBILITY = false
 	USE_TICKLESS_IDLE built in
 	RECORD_STACK_HIGH_ADDRESS = true

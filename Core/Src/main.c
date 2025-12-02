@@ -35,8 +35,8 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef uint32_t MyNotifType_t;
-const MyNotifType_t nt_UsbCDCrx = 1;
-const MyNotifType_t nt_QUErx = 2;
+const MyNotifType_t ntf_UsbCDCrx = 1;
+const MyNotifType_t ntf_QUErx = 2;
 
 /* USER CODE END PTD */
 
@@ -264,7 +264,7 @@ int main(void)
   myQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue01_attributes);
 
   /* creation of dmxChannelsQueue */
-  dmxChannelsQueueHandle = osMessageQueueNew (1024, sizeof(uint16_t), &dmxChannelsQueue_attributes);
+  dmxChannelsQueueHandle = osMessageQueueNew (512, sizeof(uint32_t), &dmxChannelsQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -498,7 +498,7 @@ void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
 
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	// obavesti led diodu da je nesto doslo preko usb-a
-	xTaskNotifyFromISR(taskHeartbeatHandle, nt_UsbCDCrx, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
+	xTaskNotifyFromISR(taskHeartbeatHandle, ntf_UsbCDCrx, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
 
 	// posalji to sto je primljeno u queue za slanje
 	for (uint32_t i = 0; i < Len; i++) {
@@ -567,7 +567,7 @@ void taskHeartbeatStart(void *argument)
 		} else {
 			// isteklo vreme bez notifikacije
 			// prikazi heartbeat: 5*(1:29 duty cycle) = 150mS smanjenim intenzitetom
-			boardLedBlinkCount(8, 1, 20);
+			boardLedBlinkCount(20, 1, 19);
 
 			if ( boardKeyPressed() == true ) {
 				// ako je pritisnuto dugme, dodaj i neki string na printout
@@ -636,7 +636,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 		osDelay(1);
 		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &receivedByte, NULL, osWaitForever);
 		if (queStat == osOK) {
-			xTaskNotify(taskHeartbeatHandle, nt_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
+			xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
 			setChannel(1, (uint8_t)'a');
