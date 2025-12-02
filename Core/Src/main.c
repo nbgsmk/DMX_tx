@@ -66,20 +66,6 @@ const osThreadAttr_t taskHeartbeat_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for taskCdcTx */
-osThreadId_t taskCdcTxHandle;
-const osThreadAttr_t taskCdcTx_attributes = {
-  .name = "taskCdcTx",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for taskCdcRx */
-osThreadId_t taskCdcRxHandle;
-const osThreadAttr_t taskCdcRx_attributes = {
-  .name = "taskCdcRx",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
 /* Definitions for task05 */
 osThreadId_t task05Handle;
 const osThreadAttr_t task05_attributes = {
@@ -94,15 +80,29 @@ const osThreadAttr_t task06_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for receiveDmxFromPcTask */
+osThreadId_t receiveDmxFromPcTaskHandle;
+const osThreadAttr_t receiveDmxFromPcTask_attributes = {
+  .name = "receiveDmxFromPcTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for echoDmxToPcTask */
+osThreadId_t echoDmxToPcTaskHandle;
+const osThreadAttr_t echoDmxToPcTask_attributes = {
+  .name = "echoDmxToPcTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for myQueue01 */
 osMessageQueueId_t myQueue01Handle;
 const osMessageQueueAttr_t myQueue01_attributes = {
   .name = "myQueue01"
 };
-/* Definitions for myQueue02 */
-osMessageQueueId_t myQueue02Handle;
-const osMessageQueueAttr_t myQueue02_attributes = {
-  .name = "myQueue02"
+/* Definitions for queueDmxChan */
+osMessageQueueId_t queueDmxChanHandle;
+const osMessageQueueAttr_t queueDmxChan_attributes = {
+  .name = "queueDmxChan"
 };
 /* Definitions for myTimer01 */
 osTimerId_t myTimer01Handle;
@@ -161,10 +161,10 @@ static void MX_RTC_Init(void);
 static void MX_SPI1_Init(void);
 void StartDefaultTask(void *argument);
 void taskHeartbeatStart(void *argument);
-void taskCdcTxStart(void *argument);
-void taskCdcRxStart(void *argument);
 void task05Start(void *argument);
 void task06Start(void *argument);
+void StartReceiveDmxFromPcTask(void *argument);
+void StartEchoDmxToPcTask(void *argument);
 void Timer01Callback(void *argument);
 void Timer02Callback(void *argument);
 
@@ -258,8 +258,8 @@ int main(void)
   /* creation of myQueue01 */
   myQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue01_attributes);
 
-  /* creation of myQueue02 */
-  myQueue02Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue02_attributes);
+  /* creation of queueDmxChan */
+  queueDmxChanHandle = osMessageQueueNew (1024, sizeof(uint8_t), &queueDmxChan_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -272,17 +272,17 @@ int main(void)
   /* creation of taskHeartbeat */
   taskHeartbeatHandle = osThreadNew(taskHeartbeatStart, NULL, &taskHeartbeat_attributes);
 
-  /* creation of taskCdcTx */
-  taskCdcTxHandle = osThreadNew(taskCdcTxStart, NULL, &taskCdcTx_attributes);
-
-  /* creation of taskCdcRx */
-  taskCdcRxHandle = osThreadNew(taskCdcRxStart, NULL, &taskCdcRx_attributes);
-
   /* creation of task05 */
   task05Handle = osThreadNew(task05Start, NULL, &task05_attributes);
 
   /* creation of task06 */
   task06Handle = osThreadNew(task06Start, NULL, &task06_attributes);
+
+  /* creation of receiveDmxFromPcTask */
+  receiveDmxFromPcTaskHandle = osThreadNew(StartReceiveDmxFromPcTask, NULL, &receiveDmxFromPcTask_attributes);
+
+  /* creation of echoDmxToPcTask */
+  echoDmxToPcTaskHandle = osThreadNew(StartEchoDmxToPcTask, NULL, &echoDmxToPcTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -494,6 +494,13 @@ void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	// obavesti led diodu da je nesto doslo preko usb-a
 	vTaskNotifyGiveFromISR(taskHeartbeatHandle, &xHigherPriorityTaskWoken);
+
+	// posalji to sto je primljeno u queue za slanje
+	for (uint32_t i = 0; i < Len; i++) {
+		uint8_t data = Buf[i];
+		osMessageQueuePut(queueDmxChanHandle, &data, 0U, 0U); 	/* The timeout must be 0 in ISR context */
+
+	}
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
 	// ako hoces usb_cdc local echo
@@ -568,68 +575,6 @@ void taskHeartbeatStart(void *argument)
   /* USER CODE END taskHeartbeatStart */
 }
 
-/* USER CODE BEGIN Header_taskCdcTxStart */
-/**
-* @brief Function implementing the taskCdcTx thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_taskCdcTxStart */
-void taskCdcTxStart(void *argument)
-{
-  /* USER CODE BEGIN taskCdcTxStart */
-	uint8_t *userData_ptr = getAllChannels();
-
-  /* Infinite loop */
-	for (;;) {
-		osDelay(1);
-
-		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 16) == USBD_BUSY ) {
-			// po potrebi signaliziraj nekom neku gresku
-			// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
-			// CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
-		}
-
-		osDelay(1500);
-
-	}
-  /* USER CODE END taskCdcTxStart */
-}
-
-/* USER CODE BEGIN Header_taskCdcRxStart */
-/**
-* @brief Function implementing the taskCdcRx thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_taskCdcRxStart */
-void taskCdcRxStart(void *argument)
-{
-  /* USER CODE BEGIN taskCdcRxStart */
-	uint32_t dly = 10000;
-  /* Infinite loop */
-  for(;;)
-  {
-		osDelay(1);
-		setChannel(1, (uint8_t)'a');
-		osDelay(dly);
-		setChannel(7, (uint8_t)'a');
-		osDelay(dly);
-		setChannel(8,  (uint8_t)'t');
-		setChannel(9,  (uint8_t)'k');
-		osDelay(dly);
-		setChannel(6,  (uint8_t)'p');
-		osDelay(dly);
-		setChannel(10,  (uint8_t)'a');
-		osDelay(dly);
-		osDelay(dly);
-		clearAllChannels();
-
-
-  }
-  /* USER CODE END taskCdcRxStart */
-}
-
 /* USER CODE BEGIN Header_task05Start */
 /**
 * @brief Function implementing the task05 thread.
@@ -666,6 +611,67 @@ void task06Start(void *argument)
     osDelay(1);
   }
   /* USER CODE END task06Start */
+}
+
+/* USER CODE BEGIN Header_StartReceiveDmxFromPcTask */
+/**
+* @brief Function implementing the receiveDmxFromPcTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartReceiveDmxFromPcTask */
+void StartReceiveDmxFromPcTask(void *argument)
+{
+  /* USER CODE BEGIN StartReceiveDmxFromPcTask */
+	uint32_t dly = 10000;
+  /* Infinite loop */
+  for(;;)
+  {
+		osDelay(1);
+		setChannel(1, (uint8_t)'a');
+		osDelay(dly);
+		setChannel(7, (uint8_t)'a');
+		osDelay(dly);
+		setChannel(8,  (uint8_t)'t');
+		setChannel(9,  (uint8_t)'k');
+		osDelay(dly);
+		setChannel(6,  (uint8_t)'p');
+		osDelay(dly);
+		setChannel(10,  (uint8_t)'a');
+		osDelay(dly);
+		osDelay(dly);
+		clearAllChannels();
+
+  }
+  /* USER CODE END StartReceiveDmxFromPcTask */
+}
+
+/* USER CODE BEGIN Header_StartEchoDmxToPcTask */
+/**
+* @brief Function implementing the echoDmxToPcTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartEchoDmxToPcTask */
+void StartEchoDmxToPcTask(void *argument)
+{
+  /* USER CODE BEGIN StartEchoDmxToPcTask */
+	uint8_t *userData_ptr = getAllChannels();
+
+  /* Infinite loop */
+	for (;;) {
+		osDelay(1);
+
+		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 16) == USBD_BUSY ) {
+			// po potrebi signaliziraj nekom neku gresku
+			// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
+			// CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
+		}
+
+		osDelay(1500);
+
+	}
+  /* USER CODE END StartEchoDmxToPcTask */
 }
 
 /* Timer01Callback function */
