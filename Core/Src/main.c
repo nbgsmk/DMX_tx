@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdbool.h"
+#include "limits.h"
 #include "usbd_cdc_if.h"
 #include "usbd_cdc.h"
 #include "DMX512.h"
@@ -33,6 +34,9 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef uint32_t MyNotifType_t;
+const MyNotifType_t nt_UsbCDCrx = 1;
+const MyNotifType_t nt_QUErx = 2;
 
 /* USER CODE END PTD */
 
@@ -99,10 +103,10 @@ osMessageQueueId_t myQueue01Handle;
 const osMessageQueueAttr_t myQueue01_attributes = {
   .name = "myQueue01"
 };
-/* Definitions for queueDmxChan */
-osMessageQueueId_t queueDmxChanHandle;
-const osMessageQueueAttr_t queueDmxChan_attributes = {
-  .name = "queueDmxChan"
+/* Definitions for dmxChannelsQueue */
+osMessageQueueId_t dmxChannelsQueueHandle;
+const osMessageQueueAttr_t dmxChannelsQueue_attributes = {
+  .name = "dmxChannelsQueue"
 };
 /* Definitions for myTimer01 */
 osTimerId_t myTimer01Handle;
@@ -150,6 +154,7 @@ const osEventFlagsAttr_t myEvent01_attributes = {
   .name = "myEvent01"
 };
 /* USER CODE BEGIN PV */
+
 
 /* USER CODE END PV */
 
@@ -258,8 +263,8 @@ int main(void)
   /* creation of myQueue01 */
   myQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue01_attributes);
 
-  /* creation of queueDmxChan */
-  queueDmxChanHandle = osMessageQueueNew (1024, sizeof(uint8_t), &queueDmxChan_attributes);
+  /* creation of dmxChannelsQueue */
+  dmxChannelsQueueHandle = osMessageQueueNew (1024, sizeof(uint16_t), &dmxChannelsQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -493,13 +498,12 @@ void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
 
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	// obavesti led diodu da je nesto doslo preko usb-a
-	vTaskNotifyGiveFromISR(taskHeartbeatHandle, &xHigherPriorityTaskWoken);
+	xTaskNotifyFromISR(taskHeartbeatHandle, nt_UsbCDCrx, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
 
 	// posalji to sto je primljeno u queue za slanje
 	for (uint32_t i = 0; i < Len; i++) {
 		uint8_t data = Buf[i];
-		osMessageQueuePut(queueDmxChanHandle, &data, 0U, 0U); 	/* The timeout must be 0 in ISR context */
-
+		osMessageQueuePut(dmxChannelsQueueHandle, &data, 0U, 0U); 	/* The timeout must be 0 in ISR context */
 	}
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
@@ -542,33 +546,33 @@ void taskHeartbeatStart(void *argument)
   /* USER CODE BEGIN taskHeartbeatStart */
 	char message[] = "DMX č!\n";
 	boardLedBlinkCount(2, 50, 50);								// blink at power on
-	uint32_t cekaj = 0;
+	uint32_t waitLen = 0;
+	uint32_t waitStatus;
+	MyNotifType_t notifVal;
   /* Infinite loop */
 	osDelay(1);
 	for (;;) {
 		osDelay(1);
 
-		cekaj = 5000;
-		if ( boardKeyPressed() == true ) {
-			cekaj = 500;
-		}
+		waitLen = boardKeyPressed() ? 500 : 5000;									// keyPressed()=true -> ubrzani blink
 
 		// cekaj task notifikaciju 5 sekundi ili krace
-		int notif = ulTaskNotifyTake(pdTRUE, cekaj);
+//		uint32_t notif = ulTaskNotifyTake(pdTRUE, waitLen);
+		waitStatus = xTaskNotifyWait(0x00, ULONG_MAX, &notifVal, waitLen);		// 00=do not clear pending notifications when starting to wait; ULONG_MAX=clear any pending notifications when wait is completed
 
-		if (0 == notif) {
+		if (waitStatus == pdPASS) {
+			// notifikacija stigla u okviru vremena, trepni jako
+			boardLedBlink(2);
+			// TODO ispitaj koja vrednost je stigla u notifVal
+		} else {
 			// isteklo vreme bez notifikacije
 			// prikazi heartbeat: 5*(1:29 duty cycle) = 150mS smanjenim intenzitetom
-			boardLedBlinkCount(5, 1, 29);
+			boardLedBlinkCount(8, 1, 20);
 
 			if ( boardKeyPressed() == true ) {
 				// ako je pritisnuto dugme, dodaj i neki string na printout
 				CDC_Transmit_FS((uint8_t*) message, strlen(message));
 			}
-
-		} else {
-			// trepni jako ako je dosla notifikacija
-			boardLedBlink(2);
 		}
 
 	}
@@ -623,24 +627,32 @@ void task06Start(void *argument)
 void StartReceiveDmxFromPcTask(void *argument)
 {
   /* USER CODE BEGIN StartReceiveDmxFromPcTask */
-	uint32_t dly = 10000;
+	uint32_t dly = 5000;
+	osStatus_t queStat;
+	uint8_t receivedByte;
   /* Infinite loop */
   for(;;)
   {
 		osDelay(1);
-		setChannel(1, (uint8_t)'a');
-		osDelay(dly);
-		setChannel(7, (uint8_t)'a');
-		osDelay(dly);
-		setChannel(8,  (uint8_t)'t');
-		setChannel(9,  (uint8_t)'k');
-		osDelay(dly);
-		setChannel(6,  (uint8_t)'p');
-		osDelay(dly);
-		setChannel(10,  (uint8_t)'a');
-		osDelay(dly);
-		osDelay(dly);
-		clearAllChannels();
+		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &receivedByte, NULL, osWaitForever);
+		if (queStat == osOK) {
+			xTaskNotify(taskHeartbeatHandle, nt_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
+		} else {
+			// zbog osWaitForever ovo se nikad nece desiti
+			setChannel(1, (uint8_t)'a');
+			osDelay(dly);
+			setChannel(7, (uint8_t)'a');
+			osDelay(dly);
+			setChannel(8,  (uint8_t)'t');
+			setChannel(9,  (uint8_t)'k');
+			osDelay(dly);
+			setChannel(6,  (uint8_t)'p');
+			osDelay(dly);
+			setChannel(10,  (uint8_t)'a');
+			osDelay(dly);
+			osDelay(dly);
+			clearAllChannels();
+		}
 
   }
   /* USER CODE END StartReceiveDmxFromPcTask */
