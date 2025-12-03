@@ -18,13 +18,13 @@
 #define HI5 HI, HI, HI, HI, HI
 #define HI10 HI5, HI5
 
-#define dmxHeaderOffset 37		// dmx channel payloads start 37 'bits' from start of DmxPkt_t
-#define dmxFrameSize 11			// dmx frame is: start bit + 8bit payload + 2xstop bits
-#define dmxChannelSize 8		// dmx channel is: 8-bit payload = user value for lighting data
+#define dmxHeaderOffset 37								// dmx channel payloads start 37 'bits' from start of DmxPkt_t
+#define dmxFrameSize 11									// dmx frame is: start bit + 8bit payload + 2xstop bits
+#define dmxChannelSize 8								// dmx channel is: 8-bit payload = user value for lighting data
 #define dmxChannelCount 512
 
 /////////////////////
-// raw dmx user data
+// dmx user data
 /////////////////////
 
 //typedefs
@@ -32,12 +32,12 @@ typedef uint8_t DmxChannel_t;							// 8-bit dmx channel values 0..255
 typedef uint8_t DmxAllChannels_t[dmxChannelCount];		// array of 512 user data, hence dmx512
 
 // variables
-//static DmxChannel_t dmxChan;						// single dmx channel
-static DmxAllChannels_t dmxAllChannels;		// array for all channels
+//static DmxChannel_t dmxChan;							// single dmx channel
+static DmxAllChannels_t dmxAllChannels;					// array for all channels
 
 
 /////////////////////////////////////
-// hardware and low level data structures
+// hardware ie low level data structures
 /////////////////////////////////////
 
 typedef struct {
@@ -71,7 +71,7 @@ static DmxLLPkt_t dmxLLPkt = {
 };
 
 
-void setChannel(uint16_t dmxAddr, uint8_t value);
+void setChannel(uint16_t dmxAddr, uint16_t value);
 DmxChannel_t getChannel(uint16_t dmxAddress);
 void clearAllChannels();
 

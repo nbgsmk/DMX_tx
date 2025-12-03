@@ -264,7 +264,7 @@ int main(void)
   myQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue01_attributes);
 
   /* creation of dmxChannelsQueue */
-  dmxChannelsQueueHandle = osMessageQueueNew (512, sizeof(uint32_t), &dmxChannelsQueue_attributes);
+  dmxChannelsQueueHandle = osMessageQueueNew (2048, sizeof(uint32_t), &dmxChannelsQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -424,7 +424,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -502,8 +502,8 @@ void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
 
 	// posalji to sto je primljeno u queue za slanje
 	for (uint32_t i = 0; i < Len; i++) {
-		uint8_t data = Buf[i];
-		osMessageQueuePut(dmxChannelsQueueHandle, &data, 0U, 0U); 	/* The timeout must be 0 in ISR context */
+		uint8_t rxByte = Buf[i];
+		osMessageQueuePut(dmxChannelsQueueHandle, &rxByte, 0U, 0U); 	/* The timeout must be 0 in ISR context */
 	}
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
@@ -526,10 +526,21 @@ void StartDefaultTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
+
+  HAL_StatusTypeDef spiStat = 0;
+  clearAllChannels();	// initialize all channels to zero
+  // TODO give semaphore
+
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
+
+    spiStat = HAL_SPI_Transmit_DMA(&hspi1, dmxLLPkt.combined, sizeof(dmxLLPkt.combined));
+    if (spiStat != HAL_OK) {
+        // Error handling here (e.g., log error, retry, blink LED)
+    }
+    osDelay(50);
   }
   /* USER CODE END 5 */
 }
@@ -590,6 +601,7 @@ void task05Start(void *argument)
 {
   /* USER CODE BEGIN task05Start */
 
+
 	/* Infinite loop */
   for(;;)
   {
@@ -629,32 +641,55 @@ void StartReceiveDmxFromPcTask(void *argument)
   /* USER CODE BEGIN StartReceiveDmxFromPcTask */
 	uint32_t dly = 5000;
 	osStatus_t queStat;
-	uint8_t receivedByte;
+	uint8_t rx_byte;
+	uint16_t bytes_received_count = 0;
+	const uint16_t required_bytes = 4;
+	uint8_t assemble_buffer[required_bytes];
   /* Infinite loop */
-  for(;;)
-  {
+	for(;;)
+	{
 		osDelay(1);
-		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &receivedByte, NULL, osWaitForever);
-		if (queStat == osOK) {
-			xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
+		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, osWaitForever);
+		if ( queStat == osOK ) {
+			assemble_buffer[bytes_received_count] = rx_byte;
+			bytes_received_count++;
+			if (bytes_received_count == required_bytes) {
+				uint16_t dmxAddr, dmxVal;
+
+				/*
+				 * Reconstruct the value safely from the buffer.
+				 * Use memcpy to avoid alignment issues that might occur on some MCUs.
+				 * This assumes little-endian data stream (adjust the buffer index logic for big-endian)
+				 */
+				memcpy(&dmxAddr, &assemble_buffer[0], sizeof(uint16_t));
+				memcpy(&dmxVal, &assemble_buffer[2], sizeof(uint16_t));
+
+				setChannel(dmxAddr, dmxVal);
+
+				xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
+
+				// Reset the state machine for the next word
+				bytes_received_count = 0;
+			}
+
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
-			setChannel(1, (uint8_t)'a');
+			setChannel(1, 'a');
 			osDelay(dly);
-			setChannel(7, (uint8_t)'a');
+			setChannel(7, 'a');
 			osDelay(dly);
-			setChannel(8,  (uint8_t)'t');
-			setChannel(9,  (uint8_t)'k');
+			setChannel(8, 't');
+			setChannel(9, 'k');
 			osDelay(dly);
-			setChannel(6,  (uint8_t)'p');
+			setChannel(6, 'p');
 			osDelay(dly);
-			setChannel(10,  (uint8_t)'a');
+			setChannel(10, 'a');
 			osDelay(dly);
 			osDelay(dly);
 			clearAllChannels();
 		}
 
-  }
+	}
   /* USER CODE END StartReceiveDmxFromPcTask */
 }
 

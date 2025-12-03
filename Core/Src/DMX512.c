@@ -13,7 +13,7 @@
 extern osMutexId_t dmxLLandChannelMutexHandle;
 
 
-void setChannel(uint16_t dmxAddress, uint8_t value){
+void setChannel(uint16_t dmxAddress, uint16_t value){
 
 //	uint16_t ofs;
 //	ofs = dmxHederOffset + ((dmxAddr-1) * sizeof(DmxChan_t));			// absolute offset into dmx packet 'start bit'
@@ -37,17 +37,19 @@ void setChannel(uint16_t dmxAddress, uint8_t value){
 	// there is nothing more to it!
 	//------------------------
 
+	uint8_t val8b = (uint8_t)(value & 0x00ff);
+
 	//+++++++++++++++++++++++
 	// CRITICAL SECTION MUTEX
 	osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
-	dmxAllChannels[dmxAddress-1] = value;
+	dmxAllChannels[dmxAddress-1] = val8b;
 
 	//------------------------
 	// low-level preparation
 	// construct low-level data in memory for SPI transmission
 	//------------------------
 	for (uint8_t i = 0; i < sizeof(dmxLLFrame.payload); ++i) {
-		if (value & (1 << i)) {
+		if (val8b & (1 << i)) {
 			dmxLLFrame.payload[i] = 0xFF;  // bit is 1
 		} else {
 			dmxLLFrame.payload[i] = 0x00;  // bit is 0
