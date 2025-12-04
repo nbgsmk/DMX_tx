@@ -363,7 +363,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV16;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
@@ -432,8 +432,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -539,17 +539,18 @@ void StartDefaultTask(void *argument)
   HAL_StatusTypeDef spiStat = 0;
   clearAllChannels();								// initialize all channels to zero
   osEventFlagsSet(initDoneEventHandle, 0x01);		// signal all ready
+//  HAL_SPI_Transmit_DMA(&hspi1, msgg, strlen(msgg));
 
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    osDelay(20);
 
-    spiStat = HAL_SPI_Transmit_DMA(&hspi1, dmxLLPkt.combined, sizeof(dmxLLPkt.combined));
-    if (spiStat != HAL_OK) {
-        // Error handling here (e.g., log error, retry, blink LED)
-    }
-    osDelay(50);
+      HAL_SPI_Transmit_DMA(&hspi1, &dmxLLPkt.combined, 64);
+//    spiStat = HAL_SPI_Transmit_DMA(&hspi1, dmxLLPkt.combined, sizeof(dmxLLPkt.combined));
+//    if (spiStat != HAL_OK) {
+//        // Error handling here (e.g., log error, retry, blink LED)
+//    }
   }
   /* USER CODE END 5 */
 }
@@ -656,7 +657,7 @@ void task06Start(void *argument)
 void StartReceiveDmxFromPcTask(void *argument)
 {
   /* USER CODE BEGIN StartReceiveDmxFromPcTask */
-	uint32_t dly = 5000;
+	uint32_t dly = 2000;
 	osStatus_t queStat;
 	uint8_t rx_byte;
 	uint16_t bytes_received_count = 0;
@@ -667,7 +668,8 @@ void StartReceiveDmxFromPcTask(void *argument)
 	for(;;)
 	{
 		osDelay(1);
-		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, osWaitForever);
+		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, 2000);
+//		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, osWaitForever);
 		if ( queStat == osOK ) {
 			assemble_buffer[bytes_received_count] = rx_byte;
 			bytes_received_count++;
@@ -692,19 +694,26 @@ void StartReceiveDmxFromPcTask(void *argument)
 
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
-			setChannel(1, 'a');
-			osDelay(dly);
-			setChannel(7, 'a');
-			osDelay(dly);
-			setChannel(8, 't');
-			setChannel(9, 'k');
-			osDelay(dly);
-			setChannel(6, 'p');
-			osDelay(dly);
-			setChannel(10, 'a');
-			osDelay(dly);
+			for (int i = 0; i < 256; ++i) {
+				osDelay(100);
+				setChannel(i, i);
+			}
 			osDelay(dly);
 			clearAllChannels();
+
+//			setChannel(1, 'a');
+//			osDelay(dly);
+//			setChannel(7, 'a');
+//			osDelay(dly);
+//			setChannel(8, 't');
+//			setChannel(9, 'k');
+//			osDelay(dly);
+//			setChannel(6, 'p');
+//			osDelay(dly);
+//			setChannel(10, 'a');
+//			osDelay(dly);
+//			osDelay(dly);
+//			clearAllChannels();
 		}
 
 	}
@@ -728,7 +737,7 @@ void StartEchoDmxToPcTask(void *argument)
 	for (;;) {
 		osDelay(1);
 
-		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 16) == USBD_BUSY ) {
+		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 64) == USBD_BUSY ) {
 			// po potrebi signaliziraj nekom neku gresku
 			// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
 			// CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato

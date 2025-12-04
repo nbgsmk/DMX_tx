@@ -37,7 +37,8 @@ void setChannel(uint16_t dmxAddress, uint16_t value){
 	// there is nothing more to it!
 	//------------------------
 
-	uint8_t val8b = (uint8_t)(value & 0x00ff);
+//	uint8_t val8b = (uint8_t)(value & 0x00ff);
+	uint8_t val8b = value;
 
 	//+++++++++++++++++++++++
 	// CRITICAL SECTION MUTEX
@@ -81,6 +82,10 @@ DmxChannel_t getChannel(uint16_t dmxAddress){
 DmxAllChannels_t* getAllChannels(void){
 	return &dmxAllChannels;
 }
+DmxLLPkt_t* getLLPkt(void){
+	return &dmxLLPkt.combined;
+}
+
 
 void clearAllChannels(){
 	for (int i = 0; i < dmxChannelCount; ++i) {
