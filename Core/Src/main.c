@@ -153,7 +153,13 @@ osEventFlagsId_t myEvent01Handle;
 const osEventFlagsAttr_t myEvent01_attributes = {
   .name = "myEvent01"
 };
+/* Definitions for initDoneEvent */
+osEventFlagsId_t initDoneEventHandle;
+const osEventFlagsAttr_t initDoneEvent_attributes = {
+  .name = "initDoneEvent"
+};
 /* USER CODE BEGIN PV */
+
 
 
 /* USER CODE END PV */
@@ -295,6 +301,9 @@ int main(void)
 
   /* creation of myEvent01 */
   myEvent01Handle = osEventFlagsNew(&myEvent01_attributes);
+
+  /* creation of initDoneEvent */
+  initDoneEventHandle = osEventFlagsNew(&initDoneEvent_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -528,8 +537,8 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN 5 */
 
   HAL_StatusTypeDef spiStat = 0;
-  clearAllChannels();	// initialize all channels to zero
-  // TODO give semaphore
+  clearAllChannels();								// initialize all channels to zero
+  osEventFlagsSet(initDoneEventHandle, 0x01);		// signal all ready
 
   /* Infinite loop */
   for(;;)
@@ -574,7 +583,15 @@ void taskHeartbeatStart(void *argument)
 		if (waitStatus == pdPASS) {
 			// notifikacija stigla u okviru vremena, trepni jako
 			boardLedBlink(2);
-			// TODO ispitaj koja vrednost je stigla u notifVal
+
+//			if (notifVal == ntf_QUErx) {
+//				boardLedBlink(6);
+//			}
+//			if (notifVal == ntf_UsbCDCrx) {
+//				boardLedBlink(2);
+//			}
+
+
 		} else {
 			// isteklo vreme bez notifikacije
 			// prikazi heartbeat: 5*(1:29 duty cycle) = 150mS smanjenim intenzitetom
@@ -645,6 +662,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 	uint16_t bytes_received_count = 0;
 	const uint16_t required_bytes = 4;
 	uint8_t assemble_buffer[required_bytes];
+	osEventFlagsWait(initDoneEventHandle, 0x01, osFlagsWaitAll | osFlagsNoClear, osWaitForever);
   /* Infinite loop */
 	for(;;)
 	{
@@ -704,6 +722,7 @@ void StartEchoDmxToPcTask(void *argument)
 {
   /* USER CODE BEGIN StartEchoDmxToPcTask */
 	uint8_t *userData_ptr = getAllChannels();
+	osEventFlagsWait(initDoneEventHandle, 0x01, osFlagsWaitAll | osFlagsNoClear, osWaitForever);
 
   /* Infinite loop */
 	for (;;) {
