@@ -74,6 +74,23 @@ void setChannel(uint16_t dmxAddress, uint16_t value){
 };
 
 
+void setChannels(uint16_t fromDmxAddr, uint16_t toDmxAddr, uint16_t value){
+	for (uint16_t i = fromDmxAddr; i < toDmxAddr; ++i) {
+		setChannel(i, value);
+	}
+}
+
+void setAllChannels(uint8_t val){
+	for (int i = 0; i < dmxChannelCount; ++i) {
+		setChannel(i, val);
+	}
+}
+
+void clearAllChannels(){
+	setAllChannels(0x00);
+}
+
+
 DmxChannel_t getChannel(uint16_t dmxAddress){
 	return dmxAllChannels[dmxAddress];
 }
@@ -84,14 +101,6 @@ DmxAllChannels_t* getAllChannels(void){
 }
 DmxLLPkt_t* getLLPkt(void){
 	return &dmxLLPkt.combined;
-}
-
-
-void clearAllChannels(){
-	for (int i = 0; i < dmxChannelCount; ++i) {
-		setChannel(i, 0);
-		setChannel(i, (uint8_t)'_');
-	}
 }
 
 

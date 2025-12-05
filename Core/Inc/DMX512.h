@@ -72,11 +72,14 @@ static DmxLLPkt_t dmxLLPkt = {
 
 
 void setChannel(uint16_t dmxAddr, uint16_t value);
+void setChannels(uint16_t fromDmxAddr, uint16_t toDmxAddr, uint16_t value);
+void setAllChannels(uint8_t val);
+void clearAllChannels();
+
 DmxChannel_t getChannel(uint16_t dmxAddress);
 DmxAllChannels_t* getAllChannels();
 DmxLLPkt_t* getLLPkt();
 
-void clearAllChannels();
 
 
 #endif /* INC_DMX512_H_ */
