@@ -543,6 +543,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+	  osDelay(1);
 	  for (int i = 0; i < 255; ++i) {
 			osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
 	  		HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
@@ -550,16 +551,7 @@ void StartDefaultTask(void *argument)
 	  		osDelay(30);
 	  	}
 
-
-//      HAL_SPI_Transmit_DMA(&hspi1, &dmxLLPkt.combined, sizeof(dmxLLPkt.combined));
-//      HAL_SPI_Transmit_DMA(&hspi1, &dmxAllChannels, sizeof(dmxAllChannels));
-//    spiStat = HAL_SPI_Transmit_DMA(&hspi1, dmxLLPkt.combined, sizeof(dmxLLPkt.combined));
-//    if (spiStat != HAL_OK) {
-//        // Error handling here (e.g., log error, retry, blink LED)
-//    }
-
-	  osDelay(1);
-      __NOP();
+      __NOP();		// for breakpoints only
   }
   /* USER CODE END 5 */
 }
@@ -587,7 +579,6 @@ void taskHeartbeatStart(void *argument)
 		waitLen = boardKeyPressed() ? 500 : 5000;									// keyPressed()=true -> ubrzani blink
 
 		// cekaj task notifikaciju 5 sekundi ili krace
-//		uint32_t notif = ulTaskNotifyTake(pdTRUE, waitLen);
 		waitStatus = xTaskNotifyWait(0x00, ULONG_MAX, &notifVal, waitLen);		// 00=do not clear pending notifications when starting to wait; ULONG_MAX=clear any pending notifications when wait is completed
 
 		if (waitStatus == pdPASS) {
@@ -604,7 +595,7 @@ void taskHeartbeatStart(void *argument)
 
 		} else {
 			// isteklo vreme bez notifikacije
-			// prikazi heartbeat: 5*(1:29 duty cycle) = 150mS smanjenim intenzitetom
+			// prikazi heartbeat: 5x(1:29 duty cycle) = 150mS smanjenim intenzitetom
 			boardLedBlinkCount(20, 1, 19);
 
 			if ( boardKeyPressed() == true ) {
@@ -703,29 +694,16 @@ void StartReceiveDmxFromPcTask(void *argument)
 
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
-			for (int ch = 1; ch < 7; ++ch) {
+			for (int ch = 3; ch <= 5; ++ch) {
 				for (int i = 0; i < 250; ++i) {
 					setChannel(ch, i);
-					osDelay(15);
+					osDelay(10);
 				}
-				setChannel(ch, 0x00);
+				setChannel(ch, 0xff);
 			}
 			clearAllChannels();
-			osDelay(3000);
+			osDelay(1000);
 
-//			setChannel(1, 'a');
-//			osDelay(dly);
-//			setChannel(7, 'a');
-//			osDelay(dly);
-//			setChannel(8, 't');
-//			setChannel(9, 'k');
-//			osDelay(dly);
-//			setChannel(6, 'p');
-//			osDelay(dly);
-//			setChannel(10, 'a');
-//			osDelay(dly);
-//			osDelay(dly);
-//			clearAllChannels();
 		}
 
 	}

@@ -41,18 +41,18 @@ static DmxAllChannels_t dmxAllChannels;					// array for all channels
 /////////////////////////////////////
 
 typedef struct {
-	const uint8_t start;
+	const uint8_t startBits;
 	uint8_t payload[dmxChannelSize];
-	const uint8_t stop[2];
+	const uint8_t stopBits[2];
 } DmxLLFrame_t;
 
 
 static DmxLLFrame_t dmxLLFrame = {
 		// DMX low-level frame: start bit + 8bit_payload + 2x stop bits
 		// each bit is REPRESENTED BY ONE BYTE here
-	.start =  LO,
+	.startBits =  LO,
 	.payload = { 0, 0, 0, 0, 0, 0, 0, 0 },	// 8bit channel data
-	.stop = { HI, HI }
+	.stopBits = { HI, HI }
 };
 
 
@@ -71,12 +71,12 @@ static DmxLLPkt_t dmxLLPkt = {
 };
 
 
-void setChannel(uint16_t dmxAddr, uint16_t value);
-void setChannels(uint16_t fromDmxAddr, uint16_t toDmxAddr, uint16_t value);
+int setChannel(uint16_t dmxAddress_range_1_to_512, uint16_t value);
+void setChannels(uint16_t fromDmxAddress, uint16_t toDmxAddress, uint16_t value);
 void setAllChannels(uint8_t val);
 void clearAllChannels();
 
-DmxChannel_t getChannel(uint16_t dmxAddress);
+DmxChannel_t getChannel(uint16_t dmxChannel);
 DmxAllChannels_t* getAllChannels();
 DmxLLPkt_t* getLLPkt();
 
