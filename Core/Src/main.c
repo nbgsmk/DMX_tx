@@ -160,8 +160,6 @@ const osEventFlagsAttr_t initDoneEvent_attributes = {
 };
 /* USER CODE BEGIN PV */
 
-
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -185,6 +183,28 @@ void Timer02Callback(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// ***************************
+// ***************************
+// SWO - Serial Wire Viewer override for printf(..)
+// use like this printf("chan %d \n", itm0)
+// ***************************
+// ***************************
+int itm0 = 0;		// must be global vars
+int itm1 = 0;
+char itmC0[256];
+char itmC1[256];
+__attribute__((weak)) int _write(int file, char *ptr, int len)
+{
+  (void)file;
+  int DataIdx;
+
+  for (DataIdx = 0; DataIdx < len; DataIdx++)
+  {
+    ITM_SendChar(*ptr++);
+  }
+  return len;
+}
 
 /* USER CODE END 0 */
 
@@ -479,6 +499,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(BOARD_LED_0_GPIO_Port, BOARD_LED_0_Pin, GPIO_PIN_SET);
@@ -695,12 +716,16 @@ void StartReceiveDmxFromPcTask(void *argument)
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
 			for (int ch = 3; ch <= 5; ++ch) {
+				itm0 = ch;
+				printf("chan %d \n", itm0);
 				for (int i = 0; i < 250; ++i) {
 					setChannel(ch, i);
 					osDelay(10);
 				}
 				setChannel(ch, 0xff);
 			}
+			itm1 ++;
+			printf("pass %d", itm1);
 			clearAllChannels();
 			osDelay(1000);
 
