@@ -190,10 +190,10 @@ void Timer02Callback(void *argument);
 // use like this printf("chan %d \n", itm0)
 // ***************************
 // ***************************
-int itm0 = 0;		// must be global vars
-int itm1 = 0;
-char itmC0[256];
-char itmC1[256];
+int ITMi0 = 0;		// must be global vars
+int ITMi1 = 0;
+char ITMc0[256];
+char ITMc1[256];
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
   (void)file;
@@ -677,62 +677,142 @@ void task06Start(void *argument)
 /* USER CODE END Header_StartReceiveDmxFromPcTask */
 void StartReceiveDmxFromPcTask(void *argument)
 {
-  /* USER CODE BEGIN StartReceiveDmxFromPcTask */
-	uint32_t dly = 2000;
-	osStatus_t queStat;
+	/* USER CODE BEGIN StartReceiveDmxFromPcTask */
+
+
+	// ------------------------------
+	// single byte arrives into queue
+	// ------------------------------
 	uint8_t rx_byte;
-	uint16_t bytes_received_count = 0;
-	const uint16_t required_bytes = 4;
-	uint8_t assemble_buffer[required_bytes];
+
+	// --------------------------
+	// finite state machine logic
+	// --------------------------
+	typedef enum {
+		STATE_WAITING_SYNC,
+		STATE_RECEIVING_DMX_DATA
+	} RxState_t;
+	RxState_t curState = STATE_WAITING_SYNC;
+	const uint8_t SYNC_BYTE = 0xff;
+	uint16_t sync_bytes_count = 0;
+	const uint16_t SYNC_BYTES_REQUIRED = 4;
+
+
+	// --------------------------
+	// receive buffer and counter
+	// --------------------------
+	uint16_t rx_payload_count = 0;
+	const uint16_t RX_PAYLOAD_REQUIRED = 4;
+	uint8_t rx_assembly_buffer[RX_PAYLOAD_REQUIRED];
+
+
+	osStatus_t queStat;
 	osEventFlagsWait(initDoneEventHandle, 0x01, osFlagsWaitAll | osFlagsNoClear, osWaitForever);
-  /* Infinite loop */
+	/* Infinite loop */
 	for(;;)
 	{
 		osDelay(1);
-		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, 5000);
-//		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, osWaitForever);
+		queStat = osMessageQueueGet(dmxChannelsQueueHandle, &rx_byte, NULL, osWaitForever);
 		if ( queStat == osOK ) {
-			assemble_buffer[bytes_received_count] = rx_byte;
-			bytes_received_count++;
-			if (bytes_received_count == required_bytes) {
-				uint16_t dmxAddr, dmxVal;
+			switch (curState) {
+			case STATE_WAITING_SYNC:
+				if (rx_byte == SYNC_BYTE) {
+					sync_bytes_count++;
+					if (sync_bytes_count >= SYNC_BYTES_REQUIRED) {
+						curState = STATE_RECEIVING_DMX_DATA;
+						printf("FSM: Sync complete. Moving to data processing.\n");
+						sync_bytes_count = 0;
+					}
+				} else {
+					sync_bytes_count = 0;
+				}
+				break;
 
-				/*
-				 * Reconstruct the value safely from the buffer.
-				 * Use memcpy to avoid alignment issues that might occur on some MCUs.
-				 * This assumes little-endian data stream (adjust the buffer index logic for big-endian)
-				 */
-				memcpy(&dmxAddr, &assemble_buffer[0], sizeof(uint16_t));
-				memcpy(&dmxVal, &assemble_buffer[2], sizeof(uint16_t));
 
-				setChannel(dmxAddr, dmxVal);
+			case STATE_RECEIVING_DMX_DATA:
+				if (rx_byte == SYNC_BYTE) {
+					sync_bytes_count++;
+					if (sync_bytes_count >= SYNC_BYTES_REQUIRED) {
+						curState = STATE_WAITING_SYNC;
+						sync_bytes_count = 0;
+						for (int i = 0; i < RX_PAYLOAD_REQUIRED; ++i) {
+							rx_assembly_buffer[i] = 0;
+						}
+						printf("FSM: break! Move back to waiting sync.\n");
+					}
 
-				xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
 
-				// Reset the state machine for the next word
-				bytes_received_count = 0;
+				} else {
+						rx_assembly_buffer[rx_payload_count] = rx_byte;
+						rx_payload_count++;
+						if (rx_payload_count == RX_PAYLOAD_REQUIRED) {
+							uint16_t adr = rx_assembly_buffer[0] | (rx_assembly_buffer[1] << 8);
+							uint16_t val = rx_assembly_buffer[2] | (rx_assembly_buffer[3] << 8);
+							printf("FSM: dmx message received. setChannel(address 0x%02X, value 0x%02X)\n", adr, val);
+							setChannel(adr, val);
+							rx_payload_count = 0;
+						}
+
+				}
+				break;
+
+
+			default:
+				curState = STATE_WAITING_SYNC;
+				sync_bytes_count = 0;
+				break;
+
+
 			}
+
+
+
+
+
+
+
+			//			assemble_buffer[bytes_received_count] = rx_byte;
+			//			bytes_received_count++;
+			//			if (bytes_received_count == required_bytes) {
+			//				uint16_t dmxAddr, dmxVal;
+			//
+			//				/*
+			//				 * Reconstruct the value safely from the buffer.
+			//				 * Use memcpy to avoid alignment issues that might occur on some MCUs.
+			//				 * This assumes little-endian data stream (adjust the buffer index logic for big-endian)
+			//				 */
+			//				memcpy(&dmxAddr, &assemble_buffer[0], sizeof(uint16_t));
+			//				memcpy(&dmxVal, &assemble_buffer[2], sizeof(uint16_t));
+			//
+			//				setChannel(dmxAddr, dmxVal);
+			//
+			//				xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
+			//
+			//				// Reset the state machine for the next word
+			//				bytes_received_count = 0;
+			//			}
 
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
-			for (int ch = 3; ch <= 5; ++ch) {
-				itm0 = ch;
-				printf("chan %d \n", itm0);
-				for (int i = 0; i < 250; ++i) {
+			uint32_t dly = 1000;
+			for (int ch = 1; ch <= 5; ++ch) {
+				ITMi0 = ch;
+				printf("chan %d \n", ITMi0);
+				for (int i = 0; i < 255; ++i) {
 					setChannel(ch, i);
 					osDelay(10);
 				}
-				setChannel(ch, 0xff);
+				setChannel(ch, 0);
 			}
-			itm1 ++;
-			printf("pass %d", itm1);
+			ITMi1 ++;
+			printf("pass %d", ITMi1);
 			clearAllChannels();
-			osDelay(1000);
+			osDelay(dly);
 
 		}
 
 	}
-  /* USER CODE END StartReceiveDmxFromPcTask */
+	/* USER CODE END StartReceiveDmxFromPcTask */
 }
 
 /* USER CODE BEGIN Header_StartEchoDmxToPcTask */
