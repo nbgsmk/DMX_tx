@@ -2,6 +2,12 @@
 Led.c.h rename to boardSUP
 poboljsani heartbeat
 
+_Doc folder sa raznim fajlovima
+debug konfiguracija i SWO - serial wire viewer
+
+SYS:
+	debug = serial wire
+
 freertos:
 	QUEUE_REGISTRY_SIZE = 64
 	ENABLE_FPU
