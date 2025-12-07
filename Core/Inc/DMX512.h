@@ -62,10 +62,10 @@ typedef struct {
 
 static DmxLLPkt_t dmxLLPkt = {
 	.combined = {
-		LO10,	LO10,	LO,	LO,	LO,		// "break": 			92uS / 4 = 23 bytes @ 2MHz
-		HI,		HI,		HI,				// "mark after break": 	12uS / 4 = 3 bytes @ 2MHz
-		LO,								// 1 x low = "start bit"
-		LO5,	LO,	LO, LO,				// 8 x low = 8bit "start frame": always zero in DMX lighting
+		LO10,	LO10,	LO,	LO,	// LO,		// "break": 			88uS = 22 bytes @ 1MHz
+		HI,		HI,				// HI,		// "mark after break":	8uS  =  2 bytes @ 1MHz
+		LO,								// 1 x low = "start bit"	4uS  =  1 byte @ 1MHz
+		LO5,	LO,LO,LO,				// 8 x low = 8bit "start frame": always zero in DMX lighting
 		HI,		HI						// 2 x hi = "stop bits"
     }
 };

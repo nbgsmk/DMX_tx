@@ -34,9 +34,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef uint32_t MyNotifType_t;
-const MyNotifType_t ntf_UsbCDCrx = 1;
-const MyNotifType_t ntf_QUErx = 2;
+
+typedef uint32_t MyFlags_t;
+const MyFlags_t flgHB_UsbCDCrx		= (1U << 0);
+const MyFlags_t flgHB_QUErx			= (1U << 1);
+const MyFlags_t flgEV_InitComplete	= (1U << 2);
+const MyFlags_t flg_ERROR_SPI		= (1U << 3);
+
 
 /* USER CODE END PTD */
 
@@ -194,13 +198,11 @@ int ITMi0 = 0;		// must be global vars
 int ITMi1 = 0;
 char ITMc0[256];
 char ITMc1[256];
-__attribute__((weak)) int _write(int file, char *ptr, int len)
-{
+__attribute__((weak)) int _write(int file, char *ptr, int len) {
   (void)file;
   int DataIdx;
 
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
-  {
+  for (DataIdx = 0; DataIdx < len; DataIdx++) {
     ITM_SendChar(*ptr++);
   }
   return len;
@@ -453,7 +455,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_LSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -526,16 +528,13 @@ static void MX_GPIO_Init(void)
 
 void USB_CDC_RxHandler_z(uint8_t *Buf, uint32_t Len) {
 
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	// obavesti led diodu da je nesto doslo preko usb-a
-	xTaskNotifyFromISR(taskHeartbeatHandle, ntf_UsbCDCrx, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-
-	// posalji to sto je primljeno u queue za slanje
+	osThreadFlagsSet(taskHeartbeatHandle, flgHB_UsbCDCrx);
+	// i posalji primljeni karakter u queue
 	for (uint32_t i = 0; i < Len; i++) {
 		uint8_t rxByte = Buf[i];
 		osMessageQueuePut(dmxChannelsQueueHandle, &rxByte, 0U, 0U); 	/* The timeout must be 0 in ISR context */
 	}
-	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
 	// ako hoces usb_cdc local echo
 	//	CDC_Transmit_FS(Buf, Len);
@@ -559,18 +558,32 @@ void StartDefaultTask(void *argument)
 
   HAL_StatusTypeDef spiStat = 0;
   clearAllChannels();								// initialize all channels to zero
-  osEventFlagsSet(initDoneEventHandle, 0x01);		// signal all ready
-
+  osEventFlagsSet(initDoneEventHandle, flgEV_InitComplete);		// signal all ready
   /* Infinite loop */
   for(;;)
   {
 	  osDelay(1);
-	  for (int i = 0; i < 255; ++i) {
-			osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
-	  		HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
-	  		osMutexRelease(dmxLLandChannelMutexHandle);
-	  		osDelay(30);
-	  	}
+	  setAllChannels(0);
+//	  setChannel(1, 0xff);
+//	  setChannel(2, 0b10101010);
+//	  setChannel(3, 0b00001000);
+//	  setChannel(4, 0b00100000);
+//	  setChannel(5, 0xff);
+	  osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
+	  spiStat = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
+	  osMutexRelease(dmxLLandChannelMutexHandle);
+	  osDelay(50);
+//	  for (int i = 0; i < 255; ++i) {
+//
+//
+//			osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
+//			spiStat = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
+//	  		osMutexRelease(dmxLLandChannelMutexHandle);
+//	  		if (spiStat != HAL_OK) {
+//	  			osThreadFlagsSet(taskHeartbeatHandle, flg_ERROR_SPI);
+//	  		}
+//	  		osDelay(50000);
+//	  	}
 
       __NOP();		// for breakpoints only
   }
@@ -590,8 +603,7 @@ void taskHeartbeatStart(void *argument)
 	char message[] = "DMX č!\n";
 	boardLedBlinkCount(2, 50, 50);								// blink at power on
 	uint32_t waitLen = 0;
-	uint32_t waitStatus;
-	MyNotifType_t notifVal;
+	MyFlags_t rcvdFlags;
   /* Infinite loop */
 	osDelay(1);
 	for (;;) {
@@ -600,29 +612,21 @@ void taskHeartbeatStart(void *argument)
 		waitLen = boardKeyPressed() ? 500 : 5000;									// keyPressed()=true -> ubrzani blink
 
 		// cekaj task notifikaciju 5 sekundi ili krace
-		waitStatus = xTaskNotifyWait(0x00, ULONG_MAX, &notifVal, waitLen);		// 00=do not clear pending notifications when starting to wait; ULONG_MAX=clear any pending notifications when wait is completed
-
-		if (waitStatus == pdPASS) {
-			// notifikacija stigla u okviru vremena, trepni jako
-			boardLedBlink(2);
-
-//			if (notifVal == ntf_QUErx) {
-//				boardLedBlink(6);
-//			}
-//			if (notifVal == ntf_UsbCDCrx) {
-//				boardLedBlink(2);
-//			}
-
-
-		} else {
-			// isteklo vreme bez notifikacije
-			// prikazi heartbeat: 5x(1:29 duty cycle) = 150mS smanjenim intenzitetom
+		rcvdFlags = osThreadFlagsWait(flgHB_UsbCDCrx | flgHB_QUErx, osFlagsWaitAny, waitLen);
+		if (rcvdFlags == osFlagsErrorTimeout) {
+			// isteklo vreme bez ikakve notifikacije -> heartbeat blink
+			// heartbeat: 5x(1:29 duty cycle) = 150mS smanjenim intenzitetom
 			boardLedBlinkCount(20, 1, 19);
-
 			if ( boardKeyPressed() == true ) {
 				// ako je pritisnuto dugme, dodaj i neki string na printout
 				CDC_Transmit_FS((uint8_t*) message, strlen(message));
 			}
+
+		} else {
+			// notifikacija druge vrste
+			if (flgHB_UsbCDCrx == rcvdFlags)	{	boardLedBlink(1); };		// character received from PC via USB_CDC
+			if (flgHB_QUErx == rcvdFlags)		{ /* boardLedBlink(2); */ };	// sequence packed to dmx queue and forwarded to hardware
+
 		}
 
 	}
@@ -677,7 +681,7 @@ void task06Start(void *argument)
 /* USER CODE END Header_StartReceiveDmxFromPcTask */
 void StartReceiveDmxFromPcTask(void *argument)
 {
-	/* USER CODE BEGIN StartReceiveDmxFromPcTask */
+  /* USER CODE BEGIN StartReceiveDmxFromPcTask */
 
 
 	// ------------------------------
@@ -707,7 +711,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 
 
 	osStatus_t queStat;
-	osEventFlagsWait(initDoneEventHandle, 0x01, osFlagsWaitAll | osFlagsNoClear, osWaitForever);
+	osEventFlagsWait(initDoneEventHandle, flgEV_InitComplete, osFlagsWaitAll | osFlagsNoClear, osWaitForever);	// FREEZE!! osFlagsNoClear because other tasks wait for this, too
 	/* Infinite loop */
 	for(;;)
 	{
@@ -751,6 +755,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 						uint16_t adr = rx_assembly_buffer[0] | (rx_assembly_buffer[1] << 8);
 						uint16_t val = rx_assembly_buffer[2] | (rx_assembly_buffer[3] << 8);
 						printf("FSM: valid dmx message received. setChannel(address 0x%02X, value 0x%02X)\n", adr, val);
+						osThreadFlagsSet(taskHeartbeatHandle, flgHB_QUErx);
 						setChannel(adr, val);
 						rx_payload_count = 0;					// restart buffer from the beginning
 					} else {
@@ -772,45 +777,19 @@ void StartReceiveDmxFromPcTask(void *argument)
 				rx_payload_count = 0;
 				break;
 
-
 			}		// end case
 
 
 
-
-
-
-
-			//			assemble_buffer[bytes_received_count] = rx_byte;
-			//			bytes_received_count++;
-			//			if (bytes_received_count == required_bytes) {
-			//				uint16_t dmxAddr, dmxVal;
-			//
-			//				/*
-			//				 * Reconstruct the value safely from the buffer.
-			//				 * Use memcpy to avoid alignment issues that might occur on some MCUs.
-			//				 * This assumes little-endian data stream (adjust the buffer index logic for big-endian)
-			//				 */
-			//				memcpy(&dmxAddr, &assemble_buffer[0], sizeof(uint16_t));
-			//				memcpy(&dmxVal, &assemble_buffer[2], sizeof(uint16_t));
-			//
-			//				setChannel(dmxAddr, dmxVal);
-			//
-			//				xTaskNotify(taskHeartbeatHandle, ntf_QUErx, eSetValueWithOverwrite);		// obavesti heartBeat da se desio rs_QUErx
-			//
-			//				// Reset the state machine for the next word
-			//				bytes_received_count = 0;
-			//			}
-
 		} else {
 			// zbog osWaitForever ovo se nikad nece desiti
-			uint32_t dly = 1000;
+			uint32_t dly = 2000;
 			for (int ch = 1; ch <= 5; ++ch) {
 				ITMi0 = ch;
 				printf("chan %d \n", ITMi0);
 				for (int i = 0; i < 255; ++i) {
 					setChannel(ch, i);
-					osDelay(10);
+					osDelay(20);
 				}
 				setChannel(ch, 0);
 			}
@@ -821,8 +800,8 @@ void StartReceiveDmxFromPcTask(void *argument)
 
 		}
 
-	}
-	/* USER CODE END StartReceiveDmxFromPcTask */
+		}
+  /* USER CODE END StartReceiveDmxFromPcTask */
 }
 
 /* USER CODE BEGIN Header_StartEchoDmxToPcTask */
@@ -836,7 +815,7 @@ void StartEchoDmxToPcTask(void *argument)
 {
   /* USER CODE BEGIN StartEchoDmxToPcTask */
 	uint8_t *userData_ptr = getAllChannels();
-	osEventFlagsWait(initDoneEventHandle, 0x01, osFlagsWaitAll | osFlagsNoClear, osWaitForever);
+	osEventFlagsWait(initDoneEventHandle, flgEV_InitComplete, osFlagsWaitAll | osFlagsNoClear, osWaitForever);			// FREEZE!! osFlagsNoClear because other tasks wait for this, too
 
   /* Infinite loop */
 	for (;;) {
@@ -845,10 +824,10 @@ void StartEchoDmxToPcTask(void *argument)
 		if ( CDC_Transmit_FS((uint8_t*) userData_ptr, 64) == USBD_BUSY ) {
 			// po potrebi signaliziraj nekom neku gresku
 			// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
-			// CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
+			// U sustini, CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
 		}
 
-		osDelay(1500);
+		osDelay(100);		// zasto ovo??? ako ispitujem USBD_BUSY, onda ne treba ovde delay
 
 	}
   /* USER CODE END StartEchoDmxToPcTask */
