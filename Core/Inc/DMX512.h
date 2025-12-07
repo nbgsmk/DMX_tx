@@ -62,11 +62,16 @@ typedef struct {
 
 static DmxLLPkt_t dmxLLPkt = {
 	.combined = {
-		LO10,	LO10,	LO,	LO,	// LO,		// "break": 			88uS = 22 bytes @ 1MHz
-		HI,		HI,				// HI,		// "mark after break":	8uS  =  2 bytes @ 1MHz
-		LO,								// 1 x low = "start bit"	4uS  =  1 byte @ 1MHz
-		LO5,	LO,LO,LO,				// 8 x low = 8bit "start frame": always zero in DMX lighting
-		HI,		HI						// 2 x hi = "stop bits"
+		LO10,	LO10,	LO,	LO,  LO,	// "break >=88uS": 					i choose 23 bytes = 92uS @ 2MHz SPI clock
+		HI,	HI,	HI,						// "mark after break >=8uS":		i choose 3 bytes  = 12uS @ 2MHz
+		LO,								// "start bit"						1 byte = 4uS @ 2MHz
+		LO5,	LO,LO,LO,				// "start frame is ZERO x 8bits":	32uS ALWAYS ZERO in DMX lighting!!!
+		HI,		HI						// "stop bits x 2"
+		// user payload of 512 channels continue from here, structured like this
+		// 1 start bit LO
+		// 8 data bits xx
+		// 2 stop bits HI HI
+		// ...
     }
 };
 

@@ -566,9 +566,9 @@ void StartDefaultTask(void *argument)
 	  setAllChannels(0);
 //	  setChannel(1, 0xff);
 //	  setChannel(2, 0b10101010);
-//	  setChannel(3, 0b00001000);
+	  setChannel(3, 0b00000100);
 //	  setChannel(4, 0b00100000);
-//	  setChannel(5, 0xff);
+	  setChannel(5, 0xff);
 	  osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
 	  spiStat = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
 	  osMutexRelease(dmxLLandChannelMutexHandle);
