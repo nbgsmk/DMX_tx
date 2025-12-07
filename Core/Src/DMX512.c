@@ -35,7 +35,7 @@ int setChannel(uint16_t dmxAddress_range_1_to_512, uint16_t value){
 	//------------------------
 	// simply save channel value as an uint8_t to an array, for debugging purposes
 	//------------------------
-	dmxAllChannels[dmxAddr-1] = chVal;
+	dmxAllChannels[dmxAddr] = chVal;
 
 	//------------------------
 	// prepare low-level data
@@ -50,7 +50,7 @@ int setChannel(uint16_t dmxAddress_range_1_to_512, uint16_t value){
 		}
 	}
 
-	uint16_t ofs = dmxHeaderOffset + ((dmxAddr-1) * sizeof(DmxLLFrame_t));			// absolute offset into dmx packet 'start bit'
+	uint16_t ofs = dmxHeaderOffset + ((dmxAddr) * sizeof(DmxLLFrame_t));			// absolute offset into dmx packet 'start bit'
 	memcpy(dmxLLPkt.combined + ofs, &dmxLLFrame.startBits, sizeof(dmxLLFrame.startBits));
 
 	ofs += sizeof(dmxLLFrame.startBits);		// move offset behind 'start bit'
