@@ -690,12 +690,12 @@ void StartReceiveDmxFromPcTask(void *argument)
 	// --------------------------
 	typedef enum {
 		STATE_WAITING_SYNC,
-		STATE_RECEIVING_DMX_DATA
+		STATE_FORWARDING_DMX_DATA
 	} RxState_t;
 	RxState_t curState = STATE_WAITING_SYNC;
-	const uint8_t SYNC_BYTE = 0xff;
+	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };
+	const uint16_t SYNC_SEQUENCE_LEN = sizeof(SYNC_SEQUENCE);
 	uint16_t sync_bytes_count = 0;
-	const uint16_t SYNC_BYTES_REQUIRED = 4;
 
 
 	// --------------------------
@@ -716,12 +716,13 @@ void StartReceiveDmxFromPcTask(void *argument)
 		if ( queStat == osOK ) {
 			switch (curState) {
 			case STATE_WAITING_SYNC:
-				if (rx_byte == SYNC_BYTE) {
+				if (rx_byte == SYNC_SEQUENCE[sync_bytes_count]) {
 					sync_bytes_count++;
-					if (sync_bytes_count >= SYNC_BYTES_REQUIRED) {
-						curState = STATE_RECEIVING_DMX_DATA;
+					if (sync_bytes_count >= SYNC_SEQUENCE_LEN) {
+						curState = STATE_FORWARDING_DMX_DATA;
 						printf("FSM: Sync complete. Moving to data processing.\n");
 						sync_bytes_count = 0;
+						rx_payload_count = 0;
 					}
 				} else {
 					sync_bytes_count = 0;
@@ -729,29 +730,37 @@ void StartReceiveDmxFromPcTask(void *argument)
 				break;
 
 
-			case STATE_RECEIVING_DMX_DATA:
-				if (rx_byte == SYNC_BYTE) {
+			case STATE_FORWARDING_DMX_DATA:
+				if (rx_byte == SYNC_SEQUENCE[sync_bytes_count]) {
 					sync_bytes_count++;
-					if (sync_bytes_count >= SYNC_BYTES_REQUIRED) {
-						curState = STATE_WAITING_SYNC;
-						sync_bytes_count = 0;
-						for (int i = 0; i < RX_PAYLOAD_REQUIRED; ++i) {
-							rx_assembly_buffer[i] = 0;
-						}
-						printf("FSM: break! Move back to waiting sync.\n");
+					if (sync_bytes_count == SYNC_SEQUENCE_LEN) {
+						curState = STATE_FORWARDING_DMX_DATA;		// found a complete *new* sync sequence. remain in this state
+						sync_bytes_count = 0;						// clear counters and restart listening
+						rx_payload_count = 0;
+						// no need to clear the buffer. it will be overwritten anyway
+						printf("FSM: break! Clear payload buffer and start listening again.\n");
 					}
 
 
 				} else {
+					sync_bytes_count = 0;							// discard accidental partial sync count if any
+					if (rx_payload_count < RX_PAYLOAD_REQUIRED) {
 						rx_assembly_buffer[rx_payload_count] = rx_byte;
 						rx_payload_count++;
-						if (rx_payload_count == RX_PAYLOAD_REQUIRED) {
-							uint16_t adr = rx_assembly_buffer[0] | (rx_assembly_buffer[1] << 8);
-							uint16_t val = rx_assembly_buffer[2] | (rx_assembly_buffer[3] << 8);
-							printf("FSM: dmx message received. setChannel(address 0x%02X, value 0x%02X)\n", adr, val);
-							setChannel(adr, val);
-							rx_payload_count = 0;
-						}
+					} else if (rx_payload_count == RX_PAYLOAD_REQUIRED) {
+						uint16_t adr = rx_assembly_buffer[0] | (rx_assembly_buffer[1] << 8);
+						uint16_t val = rx_assembly_buffer[2] | (rx_assembly_buffer[3] << 8);
+						printf("FSM: valid dmx message received. setChannel(address 0x%02X, value 0x%02X)\n", adr, val);
+						setChannel(adr, val);
+						rx_payload_count = 0;					// restart buffer from the beginning
+					} else {
+						// (rx_payload_count > RX_PAYLOAD_REQUIRED) is the only remaining possibility
+						// some kind of overrun occured!
+						curState = STATE_FORWARDING_DMX_DATA;
+						printf("FSM: break! Payload buffer overrun. Expected %d but received %d bytes. Clear and restart listening.\n", RX_PAYLOAD_REQUIRED, rx_payload_count);
+						sync_bytes_count = 0;
+						rx_payload_count = 0;
+					}
 
 				}
 				break;
@@ -760,10 +769,11 @@ void StartReceiveDmxFromPcTask(void *argument)
 			default:
 				curState = STATE_WAITING_SYNC;
 				sync_bytes_count = 0;
+				rx_payload_count = 0;
 				break;
 
 
-			}
+			}		// end case
 
 
 
