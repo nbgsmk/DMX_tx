@@ -694,7 +694,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 		STATE_WAITING_SYNC,
 		STATE_FORWARDING_DMX_DATA
 	} RxState_t;
-	RxState_t curState = STATE_WAITING_SYNC;
+	RxState_t curState = STATE_FORWARDING_DMX_DATA;
 //	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };
 	const uint8_t SYNC_SEQUENCE[] = { 120, 120, 120, 120 };
 	const uint16_t SYNC_SEQUENCE_LEN = sizeof(SYNC_SEQUENCE);
@@ -764,10 +764,10 @@ void StartReceiveDmxFromPcTask(void *argument)
 					if (rx_payload_count == RX_PAYLOAD_REQUIRED) {
 						uint16_t adr = (rx_assembly_buffer[0] << 8) | rx_assembly_buffer[1];
 						uint16_t val = (rx_assembly_buffer[2] << 8) | rx_assembly_buffer[3];
-						printf("%lu: FSM: valid dmx message received and forwarded to hardware: setChannel(address 0x%02X, value 0x%02X)\n", osKernelGetTickCount(), adr, val);
-//						osThreadFlagsSet(taskHeartbeatHandle, flg_SendToHW);
+						printf("%lu: FSM: valid dmx message forwarded to hardware: setChannel(ch %d, val %d), (hex: 0x%02X, 0x%02X)\n", osKernelGetTickCount(), adr, val, adr, val);
+						osThreadFlagsSet(taskHeartbeatHandle, flg_SendToHW);
 						uint32_t adrval = (adr << 16) | val;
-//						xTaskNotify(echoDmxToPcTaskHandle, adrval, eSetValueWithOverwrite);
+						xTaskNotify(echoDmxToPcTaskHandle, adrval, eSetValueWithOverwrite);
 						setChannel(adr, val);
 						rx_payload_count = 0;					// restart buffer from the beginning
 					}
@@ -806,22 +806,62 @@ void StartEchoDmxToPcTask(void *argument)
 {
   /* USER CODE BEGIN StartEchoDmxToPcTask */
 
-	uint8_t *userData_ptr = getAllChannels();
+//	uint8_t *userData_ptr = getAllChannels();
 	uint32_t adrval;
+	enum {
+		BY_byte,
+		BY_w16,
+		BY_w32,
+		BY_str,
+	} ORG = BY_str;
+
 	osEventFlagsWait(initDoneEventHandle, ev_InitComplete, osFlagsWaitAll | osFlagsNoClear, osWaitForever);			// FREEZE!! osFlagsNoClear because other tasks wait for this, too
 
   /* Infinite loop */
 	for (;;) {
 		osDelay(1);
-
 		xTaskNotifyWait(0x00, ULONG_MAX, &adrval, portMAX_DELAY);	// wait for combined ( (adr << 16) | val )
-		printf("USB_CDC echo: %d", adrval);
-		for (int i = 0; i < sizeof(adrval); ++i) {
-			if ( CDC_Transmit_FS((uint8_t*) adrval, sizeof(adrval)) == USBD_BUSY ) {
-				// po potrebi signaliziraj nekom neku gresku
-				// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
-				// U sustini, CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
-			}
+		printf("USB_CDC echo: 0x%02X\n", (uint32_t)adrval);
+		switch (ORG) {
+			case BY_byte:
+				uint8_t buf8[4];
+				buf8[0] = (uint8_t)((adrval >> 24) & 0xFF);
+				buf8[1] = (uint8_t)((adrval >> 16) & 0xFF);
+				buf8[2] = (uint8_t)((adrval >> 8) & 0xFF);
+				buf8[3] = (uint8_t)(adrval & 0xFF);
+	    		if ( CDC_Transmit_FS( buf8, sizeof(buf8) ) == USBD_BUSY ) {
+					// po potrebi signaliziraj nekom neku gresku
+					// glupost! ako je USBD_BUSY nikom nista, a ako nije, racunaj da je poslato. bas teska glupost!
+					// U sustini, CDC_Transmit_FS neinvazivno pokusava da posalje i vraca USBD_BUSY ako je port zauzet ili USBD_OK ako js poslato
+	    		}
+				break;
+
+			case BY_w16:
+				uint16_t buf16[2];
+				buf16[0] = (uint16_t)((adrval >> 16) & 0xFFFF);
+				buf16[1] = (uint16_t)(adrval & 0xFFFF);
+				if ( CDC_Transmit_FS( (uint8_t*)buf16, sizeof(buf16) ) == USBD_BUSY ) {
+					// po potrebi signaliziraj nekom neku gresku
+				}
+				break;
+
+			case BY_w32:
+				if ( CDC_Transmit_FS((uint8_t*)&adrval, sizeof(adrval)) == USBD_BUSY ) {
+					// po potrebi signaliziraj nekom neku gresku
+				}
+				break;
+
+			case BY_str:
+				char strbuf[64];
+				sprintf(strbuf, "ch %lu, val %lu\n", ((adrval >> 16) & 0xFFFF), (adrval & 0xFFFF) );
+				if ( CDC_Transmit_FS((uint8_t*)&strbuf, strlen(strbuf)) == USBD_BUSY ) {
+					// po potrebi signaliziraj nekom neku gresku
+				}
+				break;
+
+			default:
+				// greska. sta sad?
+				break;
 		}
 
 	}
