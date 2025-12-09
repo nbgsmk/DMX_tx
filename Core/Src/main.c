@@ -562,13 +562,17 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  setAllChannels(0);
-	  setChannel(2,  0b10101010);
-	  setChannel(3, 0);
-	  setChannel(77,  0b10101010);
-	  setChannel(510, 0b00010000);
-	  setChannel(511, 0b00010000);
-	  setChannel(512, 0b00010000);
+	  if (1==1) {
+		  // test patterns if needed
+		  setAllChannels(0);
+//		  setChannel(01,	0b10101010);	// 170,	0xAA
+		  setChannel(02,	0b00010000);	// 16,	0x10
+		  setChannel(07,	0b00001011);	// 11,	0x08
+		  setChannel(510,	0b00010000);	// 16,	0x10
+		  setChannel(512,	0b00010000);	// 16,	0x10
+	  }
+
+	  // SPI transmits the dmx sequence repeatedly
 	  osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
 	  spiStat = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
 	  osMutexRelease(dmxLLandChannelMutexHandle);
@@ -695,8 +699,8 @@ void StartReceiveDmxFromPcTask(void *argument)
 		STATE_FORWARDING_DMX_DATA
 	} RxState_t;
 	RxState_t curState = STATE_FORWARDING_DMX_DATA;
-//	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };
-	const uint8_t SYNC_SEQUENCE[] = { 120, 120, 120, 120 };
+//	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };		// raw ffff sequence
+	const uint8_t SYNC_SEQUENCE[] = { 'x', 'x', 'x', 'x' };			// "xxxx" lowercase
 	const uint16_t SYNC_SEQUENCE_LEN = sizeof(SYNC_SEQUENCE);
 	uint16_t sync_bytes_count = 0;
 
@@ -777,9 +781,10 @@ void StartReceiveDmxFromPcTask(void *argument)
 
 
 			default:
-				curState = STATE_WAITING_SYNC;
+				curState = STATE_FORWARDING_DMX_DATA;
 				sync_bytes_count = 0;
 				rx_payload_count = 0;
+				printf("%lu: FSM: unknown state! Restart listening in STATE_FORWARDING_DMX_DATA\n", osKernelGetTickCount());
 				break;
 
 			}		// end case
@@ -824,7 +829,7 @@ void StartEchoDmxToPcTask(void *argument)
 	for (;;) {
 		osDelay(1);
 		xTaskNotifyWait(0x00, ULONG_MAX, &adrval, portMAX_DELAY);	// wait for combined ( (adr << 16) | val )
-		printf("USB_CDC echo: 0x%02X\n", (uint32_t)adrval);
+		printf("USB_CDC echo a: 0x%02lx\n", (unsigned long)adrval);
 		switch (ORG) {
 			case BY_byte:
 				uint8_t buf8[4];

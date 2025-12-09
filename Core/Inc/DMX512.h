@@ -78,11 +78,11 @@ static DmxLLPkt_t dmxLLPkt = {
 
 int setChannel(uint16_t dmxAddress_range_1_to_512, uint16_t value);
 void setChannels(uint16_t fromDmxAddress, uint16_t toDmxAddress, uint16_t value);
-void setAllChannels(uint8_t val);
+void setAllChannels(uint16_t val);
 void clearAllChannels();
 
 DmxChannel_t getChannel(uint16_t dmxChannel);
-DmxAllChannels_t* getAllChannels();
+DmxAllChannels_t *getAllChannels();
 DmxLLPkt_t* getLLPkt();
 
 

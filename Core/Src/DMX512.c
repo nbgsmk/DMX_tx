@@ -76,7 +76,7 @@ void setChannels(uint16_t fromDmxAddr, uint16_t toDmxAddr, uint16_t value){
 	}
 }
 
-void setAllChannels(uint8_t val){
+void setAllChannels(uint16_t val){
 	for (int i = 1; i <= dmxChannelCount; ++i) {
 		setChannel(i, val);
 	}
@@ -93,15 +93,9 @@ DmxChannel_t getChannel(uint16_t dmxAddress){
 
 
 DmxAllChannels_t* getAllChannels(void){
-	return &dmxAllChannels;
+	return dmxAllChannels;
 }
 DmxLLPkt_t* getLLPkt(void){
-	return &dmxLLPkt.combined;
+	return &dmxLLPkt;
 }
 
-
-char* hexToStr(uint8_t hexVal){
-	char s[4];
-	sprintf(s, 5, "%4X", hexVal);
-	return &s;
-}
