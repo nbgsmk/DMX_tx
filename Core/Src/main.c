@@ -564,10 +564,10 @@ void StartDefaultTask(void *argument)
   {
 	  if (1==1) {
 		  // test patterns if needed
-		  setAllChannels(0);
-//		  setChannel(01,	0b10101010);	// 170,	0xAA
-		  setChannel(02,	0b00010000);	// 16,	0x10
-		  setChannel(07,	0b00001011);	// 11,	0x08
+//		  setAllChannels(0);
+		  setChannel(01,	0b10101010);	// 170,	0xAA
+		  setChannel(07,	0b00010000);	// 16,	0x10
+		  setChannel(77,	0b00001011);	// 11,	0x08
 		  setChannel(510,	0b00010000);	// 16,	0x10
 		  setChannel(512,	0b00010000);	// 16,	0x10
 	  }
@@ -579,7 +579,24 @@ void StartDefaultTask(void *argument)
 	  if (spiStat != HAL_OK) {
 		  osThreadFlagsSet(taskHeartbeatHandle, flg_ERROR_SPI);
 	  }
-	  osDelay(20);
+	  osDelay(25);		// safest value in all cases
+	  /*
+	   * Minimum osDelay(..) without triggering above condition != HAL_OK
+	   * stm32F411ceu6 @ 32MHz, SPI clock 2MHz, free running (no debug session connected)
+	   *
+	   * Each of setChannel(..) or setAllChannels(..) takes some time to execute, therefore slowing the overal task execution.
+	   * This delay gives SPI peripheral more time to complete transmission started in the previous loop pass.
+	   * These are the minimum times measured:
+	   *
+	   * 	23mS	running with no test patterns (fastest loop execution)
+	   * 	23mS	running a few setChannel(adr, val) (takes small amount of time, still fast loop execution)
+	   * 	6mS		running clearAllChannels() or setAllChannels(x) (takes most time because touching _every_channel, therefore slowest loop execution)
+	   *
+	   *  NOTE: HAL discards the request if the SPI peripheral is busy, so repeating the command
+	   *  too fast causes no problems, except this task possibly hogging other's time.
+	   */
+
+
 
   }
   /* USER CODE END 5 */
@@ -606,7 +623,7 @@ void taskHeartbeatStart(void *argument)
 		waitLen = boardKeyPressed() ? 500 : 5000;									// keyPressed()=true -> ubrzani blink
 
 		// cekaj task notifikaciju 5 sekundi ili krace
-		rcvdFlags = osThreadFlagsWait(flg_UsbCDCrx_ISR | flg_SendToHW, osFlagsWaitAny, waitLen);
+		rcvdFlags = osThreadFlagsWait(flg_UsbCDCrx_ISR | flg_SendToHW | flg_ERROR_SPI, osFlagsWaitAny, waitLen);
 		if (rcvdFlags == osFlagsErrorTimeout) {
 			// isteklo vreme bez ikakve notifikacije -> heartbeat blink
 			// heartbeat: 5x(1:29 duty cycle) = 150mS smanjenim intenzitetom
@@ -620,12 +637,17 @@ void taskHeartbeatStart(void *argument)
 			// notifikacija druge vrste
 			if (flg_UsbCDCrx_ISR == rcvdFlags)	{
 				boardLedBlink(1); 			// character received from PC via USB_CDC
-				// printf("%lu: triggered UsbCDCrx_ISR\n", osKernelGetTickCount());
+				 printf("%lu: triggered UsbCDCrx_ISR\n", osKernelGetTickCount());
 				__NOP();
 			};
 			if (flg_SendToHW == rcvdFlags)		{
 				boardLedBlink(1); 			// (addr,val) pair sent to dmx queue and forwarded to hardware
-//				printf("%lu: hardware updated\n", osKernelGetTickCount());
+				printf("%lu: hardware updated\n", osKernelGetTickCount());
+				__NOP();
+			};
+			if (flg_ERROR_SPI == rcvdFlags)	{
+				boardLedBlink(1); 			// too quick calling SPI when it was not ready for transmission
+				 printf("%lu: called SPI transmit dma before it was not ready to transmit\n", osKernelGetTickCount());
 				__NOP();
 			};
 
