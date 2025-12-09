@@ -575,7 +575,7 @@ void StartDefaultTask(void *argument)
 	  if (spiStat != HAL_OK) {
 		  osThreadFlagsSet(taskHeartbeatHandle, flg_ERROR_SPI);
 	  }
-	  osDelay(50);
+	  osDelay(20);
 
   }
   /* USER CODE END 5 */
@@ -806,14 +806,17 @@ void StartEchoDmxToPcTask(void *argument)
 {
   /* USER CODE BEGIN StartEchoDmxToPcTask */
 
-//	uint8_t *userData_ptr = getAllChannels();
+	uint8_t *userData_ptr = getAllChannels();
 	uint32_t adrval;
 	enum {
 		BY_byte,
 		BY_w16,
 		BY_w32,
-		BY_str,
-	} ORG = BY_str;
+		BY_str_single_chan,
+		BY_w32_16chan,
+		BY_str_16chan,
+		BY_str_32chan,
+	} ORG = BY_w32_16chan;
 
 	osEventFlagsWait(initDoneEventHandle, ev_InitComplete, osFlagsWaitAll | osFlagsNoClear, osWaitForever);			// FREEZE!! osFlagsNoClear because other tasks wait for this, too
 
@@ -851,10 +854,35 @@ void StartEchoDmxToPcTask(void *argument)
 				}
 				break;
 
-			case BY_str:
+			case BY_w32_16chan:
+//				for (int chnn = 0; chnn < 16; ++chnn) {
+					if ( CDC_Transmit_FS((uint8_t*)&userData_ptr, 16) == USBD_BUSY ) {
+						// po potrebi signaliziraj nekom neku gresku
+					}
+//				}
+				break;
+
+			case BY_str_single_chan:
 				char strbuf[64];
 				sprintf(strbuf, "ch %lu, val %lu\n", ((adrval >> 16) & 0xFFFF), (adrval & 0xFFFF) );
 				if ( CDC_Transmit_FS((uint8_t*)&strbuf, strlen(strbuf)) == USBD_BUSY ) {
+					// po potrebi signaliziraj nekom neku gresku
+				}
+				break;
+
+			case BY_str_16chan:
+				int ARRAY_SIZE = 16;
+				char strbuf16[64];
+				for (int chn = 0; chn < 16; ++chn) {
+					char temp_num_str[5];		// Buffer for a single number + null
+					sprintf(temp_num_str, "%4u", userData_ptr[chn]);	// Use sprintf to format a single number
+					strcat(strbuf16, temp_num_str);		// Concatenate to the main buffer
+					if (chn < ARRAY_SIZE - 1) {
+						strcat(strbuf16, ",");				// Add a comma and space if it's not the last element
+					}
+				}
+				strcat(strbuf16, "\r\n");					// add newline at the end
+				if ( CDC_Transmit_FS( (uint8_t*)strbuf16, strlen(strbuf16))  == USBD_BUSY ) {
 					// po potrebi signaliziraj nekom neku gresku
 				}
 				break;
