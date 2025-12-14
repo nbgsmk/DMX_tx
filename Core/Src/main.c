@@ -36,10 +36,11 @@
 /* USER CODE BEGIN PTD */
 
 typedef uint32_t MyFlags_t;
-const MyFlags_t flg_UsbCDCrx_ISR	= (1U << 0);
-const MyFlags_t flg_SendToHW		= (1U << 1);
-const MyFlags_t flg_ERROR_SPI		= (1U << 2);
-const MyFlags_t ev_InitComplete		= (1U << 3);
+const MyFlags_t ev_InitComplete		= (1U << 0);
+const MyFlags_t flg_UsbCDCrx_ISR	= (1U << 1);
+const MyFlags_t flg_SendToHW		= (1U << 2);
+const MyFlags_t flg_ERROR_SPI		= (1U << 3);
+const MyFlags_t flg_COMMS_BREAK		= (1U << 4);
 
 
 /* USER CODE END PTD */
@@ -58,7 +59,9 @@ const MyFlags_t ev_InitComplete		= (1U << 3);
 RTC_HandleTypeDef hrtc;
 
 SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi4;
 DMA_HandleTypeDef hdma_spi1_tx;
+DMA_HandleTypeDef hdma_spi4_tx;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -172,6 +175,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_SPI4_Init(void);
 void StartDefaultTask(void *argument);
 void taskHeartbeatStart(void *argument);
 void task05Start(void *argument);
@@ -242,6 +246,7 @@ int main(void)
   MX_DMA_Init();
   MX_RTC_Init();
   MX_SPI1_Init();
+  MX_SPI4_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -471,6 +476,44 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief SPI4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI4_Init(void)
+{
+
+  /* USER CODE BEGIN SPI4_Init 0 */
+
+  /* USER CODE END SPI4_Init 0 */
+
+  /* USER CODE BEGIN SPI4_Init 1 */
+
+  /* USER CODE END SPI4_Init 1 */
+  /* SPI4 parameter configuration*/
+  hspi4.Instance = SPI4;
+  hspi4.Init.Mode = SPI_MODE_MASTER;
+  hspi4.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi4.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi4.Init.NSS = SPI_NSS_SOFT;
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi4.Init.FirstBit = SPI_FIRSTBIT_LSB;
+  hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi4.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI4_Init 2 */
+
+  /* USER CODE END SPI4_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -480,6 +523,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
   /* DMA2_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
@@ -556,13 +602,14 @@ void StartDefaultTask(void *argument)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
 
-  HAL_StatusTypeDef spiStat = 0;
+  HAL_StatusTypeDef spiStat1 = HAL_OK;
+  HAL_StatusTypeDef spiStat4 = HAL_OK;
   clearAllChannels();											// initialize all channels to zero
   osEventFlagsSet(initDoneEventHandle, ev_InitComplete);		// signal all ready
   /* Infinite loop */
   for(;;)
   {
-	  if (1==1) {
+	  if (1==0) {
 		  // test patterns if needed
 //		  setAllChannels(0);
 		  setChannel(01,	0b10101010);	// 170,	0xAA
@@ -574,9 +621,10 @@ void StartDefaultTask(void *argument)
 
 	  // SPI transmits the dmx sequence repeatedly
 	  osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
-	  spiStat = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
+	  spiStat1 = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
+	  spiStat4 = HAL_SPI_Transmit_DMA(&hspi4, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
 	  osMutexRelease(dmxLLandChannelMutexHandle);
-	  if (spiStat != HAL_OK) {
+	  if ( (spiStat1 != HAL_OK) || (spiStat4 != HAL_OK) ) {
 		  osThreadFlagsSet(taskHeartbeatHandle, flg_ERROR_SPI);
 	  }
 	  osDelay(25);		// safest value in all cases
@@ -623,7 +671,7 @@ void taskHeartbeatStart(void *argument)
 		waitLen = boardKeyPressed() ? 500 : 5000;									// keyPressed()=true -> ubrzani blink
 
 		// cekaj task notifikaciju 5 sekundi ili krace
-		rcvdFlags = osThreadFlagsWait(flg_UsbCDCrx_ISR | flg_SendToHW | flg_ERROR_SPI, osFlagsWaitAny, waitLen);
+		rcvdFlags = osThreadFlagsWait(flg_UsbCDCrx_ISR | flg_SendToHW | flg_ERROR_SPI | flg_COMMS_BREAK, osFlagsWaitAny, waitLen);
 		if (rcvdFlags == osFlagsErrorTimeout) {
 			// isteklo vreme bez ikakve notifikacije -> heartbeat blink
 			// heartbeat: 5x(1:29 duty cycle) = 150mS smanjenim intenzitetom
@@ -641,13 +689,18 @@ void taskHeartbeatStart(void *argument)
 				__NOP();
 			};
 			if (flg_SendToHW == rcvdFlags)		{
-				boardLedBlink(1); 			// (addr,val) pair sent to dmx queue and forwarded to hardware
+				boardLedBlink(1); 					// (addr,val) pair sent to dmx queue and forwarded to hardware
 				printf("%lu: hardware updated\n", osKernelGetTickCount());
 				__NOP();
 			};
 			if (flg_ERROR_SPI == rcvdFlags)	{
-				boardLedBlink(1); 			// too quick calling SPI when it was not ready for transmission
+				boardLedBlink(1); 					// too quick calling SPI when it was not ready for transmission
 				 printf("%lu: called SPI transmit dma before it was not ready to transmit\n", osKernelGetTickCount());
+				__NOP();
+			};
+			if (flg_COMMS_BREAK == rcvdFlags)	{
+				boardLedBlinkCount(2, 50, 50); 		// break received, buffers discarded, restarted listening
+				 printf("%lu: communication break! Restart listening and blink led a few times.\n", osKernelGetTickCount());
 				__NOP();
 			};
 
@@ -713,16 +766,21 @@ void StartReceiveDmxFromPcTask(void *argument)
 	// ------------------------------
 	uint8_t rx_byte;
 
-	// --------------------------
-	// finite state machine logic
-	// --------------------------
+	// ---------------------------
+	// finite state machine logic:
+	// - receive 4 times uint8_t into buffer
+	// - assemble as { chAddressMSB, chAddressLSB, always_0, chanValue }
+	// 		chAddress = [0..512], chanValue = [0..255]
+	// - when done, send to hardware adapter
+	// - if 0xff received 4 times (impossible in our 'protocol') discard buffer and start listening from the beginning
+	// ---------------------------
 	typedef enum {
 		STATE_WAITING_SYNC,
 		STATE_FORWARDING_DMX_DATA
 	} RxState_t;
 	RxState_t curState = STATE_FORWARDING_DMX_DATA;
-//	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };		// raw ffff sequence
-	const uint8_t SYNC_SEQUENCE[] = { 'x', 'x', 'x', 'x' };			// "xxxx" lowercase
+	const uint8_t SYNC_SEQUENCE[] = { 0xff, 0xff, 0xff, 0xff };		// raw ffff sequence
+	// const uint8_t SYNC_SEQUENCE[] = { 'x', 'x', 'x', 'x' };			// "xxxx" lowercase
 	const uint16_t SYNC_SEQUENCE_LEN = sizeof(SYNC_SEQUENCE);
 	uint16_t sync_bytes_count = 0;
 
@@ -768,6 +826,7 @@ void StartReceiveDmxFromPcTask(void *argument)
 						sync_bytes_count = 0;						// clear counters and restart listening
 						rx_payload_count = 0;
 						// no need to clear the buffer. it will be overwritten anyway
+						osThreadFlagsSet(taskHeartbeatHandle, flg_COMMS_BREAK);
 						printf("FSM: break! Clear payload buffer and start listening again.\n");
 					}
 
@@ -851,7 +910,7 @@ void StartEchoDmxToPcTask(void *argument)
 	for (;;) {
 		osDelay(1);
 		xTaskNotifyWait(0x00, ULONG_MAX, &adrval, portMAX_DELAY);	// wait for combined ( (adr << 16) | val )
-		printf("USB_CDC echo a: 0x%02lx\n", (unsigned long)adrval);
+		// printf("USB_CDC echo a: 0x%02lx\n", (unsigned long)adrval);
 		switch (ORG) {
 			case BY_byte:
 				uint8_t buf8[4];
