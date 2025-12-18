@@ -609,7 +609,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  if (1==0) {
+	  if (1==1) {
 		  // test patterns if needed
 //		  setAllChannels(0);
 		  setChannel(01,	0b10101010);	// 170,	0xAA
