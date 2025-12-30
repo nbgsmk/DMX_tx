@@ -25,6 +25,8 @@ USE_POSIX_ERRNO
 uxTaskGetStackHighWaterMark2
 
 
+Debug howto: 
+config fajl za CMSIS-DAP debugger DMX_tx Debug_vZotja.cfg
 
 
 
