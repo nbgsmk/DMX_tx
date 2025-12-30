@@ -59,9 +59,9 @@ const MyFlags_t flg_COMMS_BREAK		= (1U << 4);
 RTC_HandleTypeDef hrtc;
 
 SPI_HandleTypeDef hspi1;
-SPI_HandleTypeDef hspi4;
+SPI_HandleTypeDef hspi5;
 DMA_HandleTypeDef hdma_spi1_tx;
-DMA_HandleTypeDef hdma_spi4_tx;
+DMA_HandleTypeDef hdma_spi5_tx;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -175,7 +175,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI1_Init(void);
-static void MX_SPI4_Init(void);
+static void MX_SPI5_Init(void);
 void StartDefaultTask(void *argument);
 void taskHeartbeatStart(void *argument);
 void task05Start(void *argument);
@@ -246,7 +246,7 @@ int main(void)
   MX_DMA_Init();
   MX_RTC_Init();
   MX_SPI1_Init();
-  MX_SPI4_Init();
+  MX_SPI5_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -476,40 +476,40 @@ static void MX_SPI1_Init(void)
 }
 
 /**
-  * @brief SPI4 Initialization Function
+  * @brief SPI5 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_SPI4_Init(void)
+static void MX_SPI5_Init(void)
 {
 
-  /* USER CODE BEGIN SPI4_Init 0 */
+  /* USER CODE BEGIN SPI5_Init 0 */
 
-  /* USER CODE END SPI4_Init 0 */
+  /* USER CODE END SPI5_Init 0 */
 
-  /* USER CODE BEGIN SPI4_Init 1 */
+  /* USER CODE BEGIN SPI5_Init 1 */
 
-  /* USER CODE END SPI4_Init 1 */
-  /* SPI4 parameter configuration*/
-  hspi4.Instance = SPI4;
-  hspi4.Init.Mode = SPI_MODE_MASTER;
-  hspi4.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi4.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
-  hspi4.Init.FirstBit = SPI_FIRSTBIT_LSB;
-  hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi4.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi4) != HAL_OK)
+  /* USER CODE END SPI5_Init 1 */
+  /* SPI5 parameter configuration*/
+  hspi5.Instance = SPI5;
+  hspi5.Init.Mode = SPI_MODE_MASTER;
+  hspi5.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi5.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi5.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi5.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi5.Init.NSS = SPI_NSS_SOFT;
+  hspi5.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi5.Init.FirstBit = SPI_FIRSTBIT_LSB;
+  hspi5.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi5.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi5.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi5) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN SPI4_Init 2 */
+  /* USER CODE BEGIN SPI5_Init 2 */
 
-  /* USER CODE END SPI4_Init 2 */
+  /* USER CODE END SPI5_Init 2 */
 
 }
 
@@ -523,12 +523,12 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
   /* DMA2_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  /* DMA2_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream4_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream4_IRQn);
 
 }
 
@@ -603,17 +603,20 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN 5 */
 
   HAL_StatusTypeDef spiStat1 = HAL_OK;
-  HAL_StatusTypeDef spiStat4 = HAL_OK;
+  HAL_StatusTypeDef spiStat5 = HAL_OK;
   clearAllChannels();											// initialize all channels to zero
   osEventFlagsSet(initDoneEventHandle, ev_InitComplete);		// signal all ready
   /* Infinite loop */
   for(;;)
   {
-	  if (1==0) {
-		  // test patterns if needed
-//		  setAllChannels(0);
+	  GPIO_PinState k0 = HAL_GPIO_ReadPin(BOARD_KEY_0_GPIO_Port, BOARD_KEY_0_Pin);
+	  if (k0 == GPIO_PIN_RESET) {
+		  // test patterns if BOARD_KEY_0_Pin is pressed
 		  setChannel(01,	0b10101010);	// 170,	0xAA
-		  setChannel(07,	0b00010000);	// 16,	0x10
+		  setChannel(02,	55);			// 55,	0x37
+		  setChannel(03,	200);			// 200,	0xc8
+		  setChannel(04,	64);			// 64,	0x40
+		  setChannel(07,	0b00000111);	//  7,	0x07
 		  setChannel(77,	0b00001011);	// 11,	0x08
 		  setChannel(510,	0b00010000);	// 16,	0x10
 		  setChannel(512,	0b00010000);	// 16,	0x10
@@ -622,9 +625,9 @@ void StartDefaultTask(void *argument)
 	  // SPI transmits the dmx sequence repeatedly
 	  osMutexAcquire(dmxLLandChannelMutexHandle, portMAX_DELAY);
 	  spiStat1 = HAL_SPI_Transmit_DMA(&hspi1, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
-	  spiStat4 = HAL_SPI_Transmit_DMA(&hspi4, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
+	  spiStat5 = HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)getLLPkt(), sizeof(dmxLLPkt.combined));
 	  osMutexRelease(dmxLLandChannelMutexHandle);
-	  if ( (spiStat1 != HAL_OK) || (spiStat4 != HAL_OK) ) {
+	  if ( (spiStat1 != HAL_OK) || (spiStat5 != HAL_OK) ) {
 		  osThreadFlagsSet(taskHeartbeatHandle, flg_ERROR_SPI);
 	  }
 	  osDelay(25);		// safest value in all cases

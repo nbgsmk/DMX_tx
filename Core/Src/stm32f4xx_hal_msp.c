@@ -25,7 +25,7 @@
 /* USER CODE END Includes */
 extern DMA_HandleTypeDef hdma_spi1_tx;
 
-extern DMA_HandleTypeDef hdma_spi4_tx;
+extern DMA_HandleTypeDef hdma_spi5_tx;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
@@ -190,56 +190,48 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 
     /* USER CODE END SPI1_MspInit 1 */
   }
-  else if(hspi->Instance==SPI4)
+  else if(hspi->Instance==SPI5)
   {
-    /* USER CODE BEGIN SPI4_MspInit 0 */
+    /* USER CODE BEGIN SPI5_MspInit 0 */
 
-    /* USER CODE END SPI4_MspInit 0 */
+    /* USER CODE END SPI5_MspInit 0 */
     /* Peripheral clock enable */
-    __HAL_RCC_SPI4_CLK_ENABLE();
+    __HAL_RCC_SPI5_CLK_ENABLE();
 
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    /**SPI4 GPIO Configuration
-    PA1     ------> SPI4_MOSI
-    PB13     ------> SPI4_SCK
+    /**SPI5 GPIO Configuration
+    PB0     ------> SPI5_SCK
+    PB8     ------> SPI5_MOSI
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_1;
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_8;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF5_SPI4;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_13;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF6_SPI4;
+    GPIO_InitStruct.Alternate = GPIO_AF6_SPI5;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /* SPI4 DMA Init */
-    /* SPI4_TX Init */
-    hdma_spi4_tx.Instance = DMA2_Stream1;
-    hdma_spi4_tx.Init.Channel = DMA_CHANNEL_4;
-    hdma_spi4_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
-    hdma_spi4_tx.Init.PeriphInc = DMA_PINC_DISABLE;
-    hdma_spi4_tx.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_spi4_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-    hdma_spi4_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-    hdma_spi4_tx.Init.Mode = DMA_NORMAL;
-    hdma_spi4_tx.Init.Priority = DMA_PRIORITY_LOW;
-    hdma_spi4_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-    if (HAL_DMA_Init(&hdma_spi4_tx) != HAL_OK)
+    /* SPI5 DMA Init */
+    /* SPI5_TX Init */
+    hdma_spi5_tx.Instance = DMA2_Stream4;
+    hdma_spi5_tx.Init.Channel = DMA_CHANNEL_2;
+    hdma_spi5_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_spi5_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi5_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_spi5_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_spi5_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_spi5_tx.Init.Mode = DMA_NORMAL;
+    hdma_spi5_tx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_spi5_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    if (HAL_DMA_Init(&hdma_spi5_tx) != HAL_OK)
     {
       Error_Handler();
     }
 
-    __HAL_LINKDMA(hspi,hdmatx,hdma_spi4_tx);
+    __HAL_LINKDMA(hspi,hdmatx,hdma_spi5_tx);
 
-    /* USER CODE BEGIN SPI4_MspInit 1 */
+    /* USER CODE BEGIN SPI5_MspInit 1 */
 
-    /* USER CODE END SPI4_MspInit 1 */
+    /* USER CODE END SPI5_MspInit 1 */
   }
 
 }
@@ -272,27 +264,25 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* hspi)
 
     /* USER CODE END SPI1_MspDeInit 1 */
   }
-  else if(hspi->Instance==SPI4)
+  else if(hspi->Instance==SPI5)
   {
-    /* USER CODE BEGIN SPI4_MspDeInit 0 */
+    /* USER CODE BEGIN SPI5_MspDeInit 0 */
 
-    /* USER CODE END SPI4_MspDeInit 0 */
+    /* USER CODE END SPI5_MspDeInit 0 */
     /* Peripheral clock disable */
-    __HAL_RCC_SPI4_CLK_DISABLE();
+    __HAL_RCC_SPI5_CLK_DISABLE();
 
-    /**SPI4 GPIO Configuration
-    PA1     ------> SPI4_MOSI
-    PB13     ------> SPI4_SCK
+    /**SPI5 GPIO Configuration
+    PB0     ------> SPI5_SCK
+    PB8     ------> SPI5_MOSI
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1);
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0|GPIO_PIN_8);
 
-    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_13);
-
-    /* SPI4 DMA DeInit */
+    /* SPI5 DMA DeInit */
     HAL_DMA_DeInit(hspi->hdmatx);
-    /* USER CODE BEGIN SPI4_MspDeInit 1 */
+    /* USER CODE BEGIN SPI5_MspDeInit 1 */
 
-    /* USER CODE END SPI4_MspDeInit 1 */
+    /* USER CODE END SPI5_MspDeInit 1 */
   }
 
 }
